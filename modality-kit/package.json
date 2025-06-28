@@ -1,0 +1,46 @@
+{
+  "version": "0.0.0",
+  "name": "modality-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/react-atomic/modality"
+  },
+  "homepage": "https://github.com/react-atomic/modality/modality-kit",
+  "description": "TODO: description",
+  "keywords": [
+    "modality-kit"
+  ],
+  "author": "Hill <hill@kimo.com>",
+  "license": "ISC",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "fastmcp": "^3.6.2"
+  },
+  "exports": {
+    "import": "./dist/index.js",
+    "types": "./dist/types/index.d.ts"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "update-compile-sh": "yo reshow:compile-sh",
+    "start": "ws",
+    "format": "prettier-eslint --write 'src/**/*.js'",
+    "build:types": "bunx tsc -p ./",
+    "build:src": "bun build src/index.ts --outdir dist",
+    "build": "bun run build:src && bun run build:types",
+    "mochaFor": "STRICT_MODE=on mocha -r global-jsdom/register",
+    "mocha": "npm run mochaFor -- 'src/**/__tests__/*.{js,mjs}'",
+    "test:report": "npm run build && npm run mochaFor -- --reporter mocha-junit-reporter --reporter-options mochaFile=./test_output/mocha.xml 'build/{cjs,es}/**/__tests__/*.{js,mjs}'",
+    "test": "npm run mocha",
+    "prepublishOnly": "npm run test"
+  },
+  "types": "./dist/types/index.d.ts",
+  "files": [
+    "package.json",
+    "README.md",
+    "src",
+    "types"
+  ]
+}
