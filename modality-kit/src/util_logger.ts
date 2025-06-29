@@ -3,115 +3,135 @@
  * Provides consistent logging across storage operations with configurable levels
  */
 
-
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'success';
+export type LogLevel = "debug" | "info" | "warn" | "error" | "success";
 
 export interface LoggerOptions {
-  timestampFormat?: 'iso' | 'locale' | false;
-  color?: boolean;
-  json?: boolean;
-  context?: Record<string, any>;
+  timestampFormat?: "iso" | "locale" | false;
+  name?: string;
 }
 
 export class ModalityLogger {
-  constructor(
-    private options: LoggerOptions = {},
-    private logLevel: LogLevel = 'info'
-  ) {}
+  private static instance: ModalityLogger;
+  private options: LoggerOptions = {};
+  private logLevel: LogLevel = "info";
+
+  constructor(logOption: string | LoggerOptions, logLevel: LogLevel = "info") {
+    if (typeof logOption === "string") {
+      this.options.name = logOption;
+    } else {
+      this.options = { ...this.options, ...logOption };
+    }
+    this.logLevel = logLevel;
+  }
+
+  public static getInstance(
+    logOption: string | LoggerOptions,
+    logLevel?: LogLevel
+  ) {
+    if (!ModalityLogger.instance) {
+      ModalityLogger.instance = new ModalityLogger(logOption, logLevel);
+    }
+    return ModalityLogger.instance;
+  }
 
   private getTimestamp(): string | undefined {
     if (this.options.timestampFormat === false) return undefined;
     const now = new Date();
-    if (this.options.timestampFormat === 'locale') return now.toLocaleString();
+    if (this.options.timestampFormat === "locale") return now.toLocaleString();
     return now.toISOString();
   }
 
   private shouldLog(level: LogLevel): boolean {
-    const levels: LogLevel[] = ['debug', 'info', 'warn', 'error', 'success'];
+    const levels: LogLevel[] = ["debug", "info", "warn", "error", "success"];
     return levels.indexOf(level) >= levels.indexOf(this.logLevel);
-  }
-
-  private format(level: LogLevel, message: string, context: Record<string, any> = {}, extra?: any): any {
-    const timestamp = this.getTimestamp();
-    const ctx = { ...(this.options.context || {}), ...context };
-    const base = {
-      level,
-      message,
-      ...(timestamp ? { timestamp } : {}),
-      ...(Object.keys(ctx).length ? { context: ctx } : {}),
-      ...(extra ? { ...extra } : {})
-    };
-    if (this.options.json) return JSON.stringify(base);
-    let prefix = '';
-    switch (level) {
-      case 'debug': prefix = '🔍'; break;
-      case 'info': prefix = 'ℹ️'; break;
-      case 'warn': prefix = '⚠️'; break;
-      case 'error': prefix = '❌'; break;
-      case 'success': prefix = '✅'; break;
-      default: prefix = '';
-    }
-    let out = `${prefix} ${message}`;
-    if (timestamp) out = `[${timestamp}] ` + out;
-    if (Object.keys(ctx).length) out += ` | context: ${JSON.stringify(ctx)}`;
-    return extra ? [out, extra] : [out];
-  }
-
-  withContext(context: Record<string, any>) {
-    return new ModalityLogger({ ...this.options, context: { ...(this.options.context || {}), ...context } }, this.logLevel);
   }
 
   setLogLevel(level: LogLevel) {
     this.logLevel = level;
   }
 
-  setOptions(options: LoggerOptions) {
-    this.options = { ...this.options, ...options };
-  }
-
-  log(level: LogLevel, message: string, context: Record<string, any> = {}, extra?: any) {
-    if (!this.shouldLog(level)) return;
-    const formatted = this.format(level, message, context, extra);
+  private format(level: LogLevel, payload: any, categroy?: string): any {
+    const timestamp = this.getTimestamp();
+    let prefix = "";
     switch (level) {
-      case 'debug':
-        this.options.json ? console.debug(formatted) : console.debug(...formatted);
+      case "debug":
+        prefix = "🔍";
         break;
-      case 'info':
-        this.options.json ? console.info(formatted) : console.info(...formatted);
+      case "info":
+        prefix = "ℹ️";
         break;
-      case 'warn':
-        this.options.json ? console.warn(formatted) : console.warn(...formatted);
+      case "warn":
+        prefix = "⚠️";
         break;
-      case 'error':
-        this.options.json ? console.error(formatted) : console.error(...formatted);
+      case "error":
+        prefix = "❌";
         break;
-      case 'success':
-        this.options.json ? console.log(formatted) : console.log(...formatted);
+      case "success":
+        prefix = "✅";
         break;
       default:
-        this.options.json ? console.log(formatted) : console.log(...formatted);
+        prefix = "";
+    }
+    if (timestamp) {
+      prefix += ` [${timestamp}]`;
+    }
+    if (categroy) {
+      prefix += ` [${categroy}]`;
+    }
+    return [prefix, payload];
+  }
+
+  log(level: LogLevel, payload: any, categroy?: string) {
+    if (!this.shouldLog(level)) return;
+    const formatted = this.format(level, payload, categroy);
+    switch (level) {
+      case "debug":
+        console.debug(formatted);
+        break;
+      case "info":
+        console.info(formatted);
+        break;
+      case "warn":
+        console.warn(formatted);
+        break;
+      case "error":
+        console.error(formatted);
+        break;
+      case "success":
+        console.log(formatted);
+        break;
+      default:
+        console.log(formatted);
+        break;
     }
   }
 
-  debug(message: string, context?: Record<string, any>, error?: Error) {
-    const extra = error ? { error: error.message, stack: error.stack } : undefined;
-    this.log('debug', message, context, extra);
+  debug(message: string, error?: Error) {
+    this.log("debug", { message, error });
   }
 
-  info(message: string, context?: Record<string, any>) {
-    this.log('info', message, context);
+  info(message: string, data?: any) {
+    this.log("info", { message, data });
   }
 
-  warn(message: string, context?: Record<string, any>) {
-    this.log('warn', message, context);
+  warn(message: string, resolution: string) {
+    this.log("warn", { message, resolution });
   }
 
-  error(message: string, context?: Record<string, any>, error?: Error) {
-    const extra = error ? { error: error.message, stack: error.stack } : undefined;
-    this.log('error', message, context, extra);
+  error(message: string, error?: Error) {
+    const data: any = { message };
+    if (error) {
+      data.error = {
+        message: error.message,
+        stack: error.stack,
+      };
+    }
+    this.log("error", data);
   }
 
-  success(message: string, context?: Record<string, any>) {
-    this.log('success', message, context);
+  success(message: string, data?: any) {
+    this.log("success", { message, data });
   }
 }
+
+export const loggerInstance = ModalityLogger.getInstance.bind(ModalityLogger);
