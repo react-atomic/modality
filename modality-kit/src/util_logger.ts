@@ -81,7 +81,9 @@ export class ModalityLogger {
     if (categroy) {
       prefix += ` [${categroy}]`;
     }
-    return [prefix, payload];
+
+    console.log(prefix);
+    return payload;
   }
 
   log(level: LogLevel, payload: any, categroy?: string) {
@@ -121,8 +123,8 @@ export class ModalityLogger {
     this.log("warn", { message, resolution });
   }
 
-  error(message: string, error?: Error | unknown) {
-    const data: any = { message };
+  error(message: string, error?: Error | unknown, additionalData?: any) {
+    const data: any = { message, additionalData };
     if (error instanceof Error) {
       data.error = {
         message: error?.message,
