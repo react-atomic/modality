@@ -121,12 +121,12 @@ export class ModalityLogger {
     this.log("warn", { message, resolution });
   }
 
-  error(message: string, error?: Error) {
+  error(message: string, error?: Error | unknown) {
     const data: any = { message };
-    if (error) {
+    if (error instanceof Error) {
       data.error = {
-        message: error.message,
-        stack: error.stack,
+        message: error?.message,
+        stack: error?.stack,
       };
     }
     this.log("error", data);
