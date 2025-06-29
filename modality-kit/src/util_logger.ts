@@ -75,6 +75,9 @@ export class ModalityLogger {
     if (timestamp) {
       prefix += ` [${timestamp}]`;
     }
+    if (this.options.name) {
+      prefix += ` [${this.options.name}]`;
+    }
     if (categroy) {
       prefix += ` [${categroy}]`;
     }
