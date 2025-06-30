@@ -69,8 +69,6 @@ export class ModalityLogger {
       case "success":
         prefix = "✅";
         break;
-      default:
-        prefix = "";
     }
     if (timestamp) {
       prefix += ` [${timestamp}]`;
@@ -81,7 +79,7 @@ export class ModalityLogger {
     if (categroy) {
       prefix += ` [${categroy}]`;
     }
-
+    console.log("\n");
     console.log(prefix);
     return payload;
   }
@@ -94,13 +92,30 @@ export class ModalityLogger {
         console.debug(formatted);
         break;
       case "info":
-        console.info(formatted);
+        console.dir(formatted, {
+          depth: null,
+          colors: true,
+          maxArrayLength: null,
+        });
         break;
       case "warn":
         console.warn(formatted);
         break;
       case "error":
-        console.error(formatted);
+        const error = formatted.error;
+        if (error instanceof Error) {
+          delete formatted.error;
+          console.error(formatted);
+          const { message, stack } = error;
+          if (message) {
+            console.log(message);
+          }
+          if (stack) {
+            console.log(stack);
+          }
+        } else {
+          console.error(formatted);
+        }
         break;
       case "success":
         console.log(formatted);
@@ -109,6 +124,7 @@ export class ModalityLogger {
         console.log(formatted);
         break;
     }
+    console.log("\n");
   }
 
   debug(message: string, error?: Error) {
@@ -116,7 +132,11 @@ export class ModalityLogger {
   }
 
   info(message: string, data?: any) {
-    this.log("info", { message, data });
+    const payload: any = { message };
+    if (data) {
+      payload.data = data;
+    }
+    this.log("info", payload);
   }
 
   warn(message: string, resolution: string) {
@@ -124,13 +144,7 @@ export class ModalityLogger {
   }
 
   error(message: string, error?: Error | unknown, additionalData?: any) {
-    const data: any = { message, additionalData };
-    if (error instanceof Error) {
-      data.error = {
-        message: error?.message,
-        stack: error?.stack,
-      };
-    }
+    const data: any = { message, additionalData, error };
     this.log("error", data);
   }
 
