@@ -2,6 +2,8 @@
   "compilerOptions": {
     "module": "ESNext",
     "target": "ESNext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
     "lib": ["ES2022"],
     "sourceMap": true,
     "rootDir": "src",
@@ -9,8 +11,6 @@
     "declaration": true,
     "declarationDir": "dist/types",
     "strict": true,
-    "moduleResolution": "node",
-    "esModuleInterop": true,
     "allowImportingTsExtensions": true
   },
   "include": ["src/**/*"],
