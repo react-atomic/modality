@@ -3,3 +3,4 @@ export type { AITools, AITool } from "./schemas/schemas_tool_config";
 
 export { formatErrorResponse, formatSuccessResponse } from "./util_response";
 export { ModalityLogger, loggerInstance } from "./util_logger";
+export { withErrorHandling, ErrorCode } from "./util_error";
