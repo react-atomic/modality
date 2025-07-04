@@ -11,11 +11,13 @@ export interface LoggerOptions {
 }
 
 export class ModalityLogger {
-  private static instance: ModalityLogger;
   private options: LoggerOptions = {};
   private logLevel: LogLevel = "info";
 
-  constructor(logOption: string | LoggerOptions, logLevel: LogLevel = "info") {
+  private constructor(
+    logOption: string | LoggerOptions,
+    logLevel: LogLevel = "info"
+  ) {
     if (typeof logOption === "string") {
       this.options.name = logOption;
     } else {
@@ -28,10 +30,7 @@ export class ModalityLogger {
     logOption: string | LoggerOptions,
     logLevel?: LogLevel
   ) {
-    if (!ModalityLogger.instance) {
-      ModalityLogger.instance = new ModalityLogger(logOption, logLevel);
-    }
-    return ModalityLogger.instance;
+    return new ModalityLogger(logOption, logLevel);
   }
 
   private getTimestamp(): string | undefined {
@@ -79,77 +78,87 @@ export class ModalityLogger {
     if (categroy) {
       prefix += ` [${categroy}]`;
     }
-    console.log("\n");
-    console.log(prefix);
-    return payload;
+    return { prefix, result: payload };
   }
 
   log(level: LogLevel, payload: any, categroy?: string) {
     if (!this.shouldLog(level)) return;
-    const formatted = this.format(level, payload, categroy);
+    const { prefix, result } = this.format(level, payload, categroy);
     switch (level) {
       case "debug":
-        console.debug(formatted);
+        console.debug("\n", prefix, result, "\n");
         break;
       case "info":
-        console.dir(formatted, {
+        console.log("\n", prefix);
+        console.dir(result, {
           depth: null,
           colors: true,
           maxArrayLength: null,
         });
+        console.log("\n");
         break;
       case "warn":
-        console.warn(formatted);
+        console.log("\n", prefix);
+        console.warn(result);
+        console.log("\n");
         break;
       case "error":
-        const error = formatted.error;
+        const error = result.error;
         if (error instanceof Error) {
-          delete formatted.error;
-          console.error(formatted);
+          delete result.error;
           const { message, stack } = error;
-          if (message) {
-            console.log(message);
-          }
           if (stack) {
-            console.log(stack);
+            if (Object.keys(result).length) {
+              console.error("\n", prefix, result, "\n", stack, "\n");
+            } else {
+              console.error("\n", prefix, "\n", stack, "\n");
+            }
+          } else {
+            if (message) {
+              result.error = message;
+            }
+            console.error("\n", prefix, result, "\n");
           }
         } else {
-          console.error(formatted);
+          console.error("\n", prefix, result, "\n");
         }
         break;
       case "success":
-        console.log(formatted);
+        console.log("\n", prefix, result, "\n");
         break;
       default:
-        console.log(formatted);
+        console.log("\n", prefix, result, "\n");
         break;
     }
-    console.log("\n");
   }
 
-  debug(message: string, error?: Error) {
-    this.log("debug", { message, error });
-  }
-
-  info(message: string, data?: any) {
-    const payload: any = { message };
+  cook(message: any, data?: any) {
+    const payload: any = typeof message === "string" ? { message } : message;
     if (data) {
       payload.data = data;
     }
-    this.log("info", payload);
+    return payload;
   }
 
-  warn(message: string, resolution?: any) {
-    this.log("warn", { message, resolution });
+  debug(message: string, data?: any) {
+    this.log("debug", this.cook(message, data));
+  }
+
+  info(message: string, data?: any) {
+    this.log("info", this.cook(message, data));
+  }
+
+  warn(message: string, data?: any) {
+    this.log("warn", this.cook(message, data));
   }
 
   error(message: string, error?: Error | unknown, additionalData?: any) {
-    const data: any = { message, additionalData, error };
-    this.log("error", data);
+    const payload: any = { error };
+    this.log("error", this.cook(payload, additionalData), message);
   }
 
   success(message: string, data?: any) {
-    this.log("success", { message, data });
+    this.log("success", this.cook(message, data));
   }
 }
 
