@@ -2,6 +2,8 @@
  * TypeScript interfaces for tool configuration objects
  */
 
+export type AIToolExecutor = (...args: any[]) => Promise<string>;
+
 /**
  * Tool interface for AI SDK compatibility
  */
@@ -10,7 +12,7 @@ export interface AITool {
   annotations?: any; // Optional annotations for the tool
   description: string;
   parameters: any; // Zod schema or JSON schema
-  execute: (parameters: any, options?: any) => Promise<any>;
+  execute: AIToolExecutor;
 }
 
 /**

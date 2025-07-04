@@ -16,14 +16,15 @@ export abstract class ErrorCode extends Error {
 }
 
 /**
- * Wrapper for MCP task functions that adds consistent error handling
+ * Wrapper for any functions that adds consistent error handling
  */
-export function withErrorHandling<
-  T extends (...args: any[]) => Promise<string>,
->(taskFn: T, operation?: string): T {
-  return (async (...args: any[]) => {
+export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
+  fn: T,
+  operation?: string
+): T {
+  return (async (...args) => {
     try {
-      return await taskFn(...args);
+      return await fn(...args);
     } catch (error) {
       // Log the error for debugging
       if (error instanceof ErrorCode) {
