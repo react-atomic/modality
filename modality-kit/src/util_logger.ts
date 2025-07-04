@@ -139,7 +139,7 @@ export class ModalityLogger {
     this.log("info", payload);
   }
 
-  warn(message: string, resolution: string) {
+  warn(message: string, resolution?: any) {
     this.log("warn", { message, resolution });
   }
 
