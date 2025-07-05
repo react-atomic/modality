@@ -10,7 +10,7 @@ export interface LoggerOptions {
   name?: string;
 }
 
-class ModalityLogger {
+export class ModalityLogger {
   private options: LoggerOptions = {};
   private logLevel: LogLevel = "info";
 
@@ -29,7 +29,7 @@ class ModalityLogger {
   public static getInstance(
     logOption: string | LoggerOptions,
     logLevel?: LogLevel
-  ) {
+  ): ModalityLogger {
     return new ModalityLogger(logOption, logLevel);
   }
 
