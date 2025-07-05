@@ -10,7 +10,7 @@ export interface LoggerOptions {
   name?: string;
 }
 
-export class ModalityLogger {
+class ModalityLogger {
   private options: LoggerOptions = {};
   private logLevel: LogLevel = "info";
 
@@ -162,4 +162,5 @@ export class ModalityLogger {
   }
 }
 
-export const loggerInstance = ModalityLogger.getInstance.bind(ModalityLogger);
+export const getLoggerInstance =
+  ModalityLogger.getInstance.bind(ModalityLogger);

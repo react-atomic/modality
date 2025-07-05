@@ -1,7 +1,7 @@
-import { loggerInstance } from "./util_logger";
+import { getLoggerInstance } from "./util_logger";
 import { formatErrorResponse } from "./util_response";
 
-const logger = loggerInstance("Error");
+const logger = getLoggerInstance("General Error");
 
 /**
  * Base class for task-related errors
