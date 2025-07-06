@@ -5,6 +5,42 @@ const positionSchema = z.object({
   col: z.number().min(1),
 });
 
+export const symbolKinds = [
+  "File",
+  "Module",
+  "Namespace",
+  "Package",
+  "Class",
+  "Method",
+  "Property",
+  "Field",
+  "Constructor",
+  "Enum",
+  "Interface",
+  "Function",
+  "Variable",
+  "Constant",
+  "String",
+  "Number",
+  "Boolean",
+  "Array",
+  "Object",
+  "Key",
+  "Null",
+  "EnumMember",
+  "Struct",
+  "Event",
+  "Operator",
+  "TypeParameter",
+] as const;
+
+// Symbol kinds enum
+export const symbolKindSchema = z
+  .enum(symbolKinds)
+  .describe("Symbol kinds enumeration");
+
+export type SymbolKindType = z.infer<typeof symbolKindSchema>;
+
 // Simple range schema with {line, col} positions
 export const rangeSchema = z
   .object({
@@ -18,7 +54,7 @@ export type Range = z.infer<typeof rangeSchema>;
 
 interface SymbolBase {
   name?: string;
-  kind?: string;
+  kind?: SymbolKindType;
   id?: string; // Optional unique identifier
   uri?: string;
   detail?: string;
