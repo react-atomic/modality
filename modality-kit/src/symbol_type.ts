@@ -17,17 +17,17 @@ export type Position = z.infer<typeof positionSchema>;
 export type Range = z.infer<typeof rangeSchema>;
 
 interface SymbolBase {
-  name: string;
-  kind: string;
-  detail?: string;
+  name?: string;
+  kind?: string;
   id?: string; // Optional unique identifier
   uri?: string;
+  detail?: string;
   content?: string; // The actual text content at this location
 }
 
 export interface Symbol extends SymbolBase {
   range: Range;
-  children: Range[];
+  children?: Symbol[];
   selectionRange?: Range;
   originSelectionRange?: Range;
 }
@@ -44,7 +44,7 @@ export interface VSCodeRange {
 
 export interface VSCodeSymbol extends SymbolBase {
   range: VSCodeRange;
-  children: VSCodeRange[];
+  children?: VSCodeSymbol[];
   selectionRange?: VSCodeRange;
   originSelectionRange?: VSCodeRange;
 }
