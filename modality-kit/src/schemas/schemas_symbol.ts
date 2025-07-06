@@ -91,6 +91,8 @@ const fileEntrySchema = z.object({
   type: z.enum(["file", "directory"]).describe("Entry type"),
   lastModified: z
     .number()
+    .optional()
+    .nullable()
     .describe("Last modified timestamp in milliseconds since epoch"),
 });
 
