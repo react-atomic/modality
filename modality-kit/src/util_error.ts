@@ -8,6 +8,7 @@ const logger = getLoggerInstance("General Error");
  */
 export abstract class ErrorCode extends Error {
   abstract readonly code: string;
+  public cause?: Error;
   constructor(message: string, originalError?: Error) {
     super(message);
     this.name = this.constructor.name;
