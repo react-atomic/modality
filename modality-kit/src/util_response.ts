@@ -21,7 +21,7 @@ export interface McpErrorResponse {
 }
 
 interface SuccessData {
-  message: string;
+  message: string | null;
   [key: string]: any; // Allow additional properties
 }
 
