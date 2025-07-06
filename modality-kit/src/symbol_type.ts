@@ -20,6 +20,7 @@ interface SymbolBase {
   name: string;
   detail: string;
   kind: string;
+  id?: string; // Optional unique identifier
 }
 
 export interface Symbol extends SymbolBase {
@@ -28,20 +29,20 @@ export interface Symbol extends SymbolBase {
   children: Range[];
 }
 
-export interface VsCodePosition {
+export interface VSCodePosition {
   line: number; // Line number (0-based)
   character: number; // Character number (0-based)
 }
 
-export interface VsCodeRange {
-  start: VsCodePosition;
-  end: VsCodePosition;
+export interface VSCodeRange {
+  start: VSCodePosition;
+  end: VSCodePosition;
 }
 
-export interface VsCodeSymbol extends SymbolBase {
-  range: VsCodeRange;
-  selectionRange: VsCodeRange;
-  children: VsCodeRange[];
+export interface VSCodeSymbol extends SymbolBase {
+  range: VSCodeRange;
+  selectionRange: VSCodeRange;
+  children: VSCodeRange[];
 }
 
 // File system entry type
