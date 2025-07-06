@@ -18,15 +18,18 @@ export type Range = z.infer<typeof rangeSchema>;
 
 interface SymbolBase {
   name: string;
-  detail: string;
   kind: string;
+  detail?: string;
   id?: string; // Optional unique identifier
+  uri?: string;
+  content?: string; // The actual text content at this location
 }
 
 export interface Symbol extends SymbolBase {
   range: Range;
-  selectionRange: Range;
   children: Range[];
+  selectionRange?: Range;
+  originSelectionRange?: Range;
 }
 
 export interface VSCodePosition {
@@ -41,8 +44,9 @@ export interface VSCodeRange {
 
 export interface VSCodeSymbol extends SymbolBase {
   range: VSCodeRange;
-  selectionRange: VSCodeRange;
   children: VSCodeRange[];
+  selectionRange?: VSCodeRange;
+  originSelectionRange?: VSCodeRange;
 }
 
 // File system entry type
