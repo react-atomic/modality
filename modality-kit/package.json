@@ -1,5 +1,5 @@
 {
-  "version": "0.1.12",
+  "version": "0.1.13",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -12,11 +12,10 @@
   ],
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
-  "dependencies": {
-    "zod": "^3.25.74"
-  },
   "devDependencies": {
-    "fastmcp": "^3.6.2"
+    "@types/node": "^24.0.10",
+    "fastmcp": "^3.8.2",
+    "zod": "^3.25.74"
   },
   "exports": {
     "require": "./dist/index.js",
