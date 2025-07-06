@@ -5,5 +5,4 @@ export { formatErrorResponse, formatSuccessResponse } from "./util_response";
 export { getLoggerInstance, type ModalityLogger } from "./util_logger";
 export { withErrorHandling, ErrorCode } from "./util_error";
 
-export * as SymbolType from "./symbol_type";
-
+export * as SymbolType from "./schemas/schemas_symbol";
