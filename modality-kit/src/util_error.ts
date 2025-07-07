@@ -9,11 +9,11 @@ const logger = getLoggerInstance("General Error");
 export abstract class ErrorCode extends Error {
   abstract readonly code: string;
   public cause?: Error;
-  constructor(message: string, originalError?: Error) {
+  constructor(message: string, originalError?: unknown) {
     super(message);
     this.name = this.constructor.name;
     if (originalError) {
-      this.cause = originalError;
+      this.cause = originalError as Error;
     }
   }
 }
