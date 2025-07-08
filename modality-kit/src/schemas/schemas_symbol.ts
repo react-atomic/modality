@@ -63,7 +63,7 @@ interface SymbolBase {
 }
 
 export interface Symbol extends SymbolBase {
-  range: Range;
+  range?: Range;
   selectionRange?: Range;
   originSelectionRange?: Range;
   children?: Symbol[];
@@ -81,7 +81,7 @@ export interface VSCodeRange {
 }
 
 export interface VSCodeSymbol extends SymbolBase {
-  range: VSCodeRange;
+  range?: VSCodeRange;
   selectionRange?: VSCodeRange;
   originSelectionRange?: VSCodeRange;
   children?: VSCodeSymbol[];
