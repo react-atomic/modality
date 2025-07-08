@@ -59,13 +59,15 @@ interface SymbolBase {
   uri?: string;
   detail?: string;
   content?: string; // The actual text content at this location
+  containerName?: string;
 }
 
 export interface Symbol extends SymbolBase {
   range: Range;
-  children?: Symbol[];
   selectionRange?: Range;
   originSelectionRange?: Range;
+  children?: Symbol[];
+  location?: Symbol;
 }
 
 export interface VSCodePosition {
@@ -80,9 +82,10 @@ export interface VSCodeRange {
 
 export interface VSCodeSymbol extends SymbolBase {
   range: VSCodeRange;
-  children?: VSCodeSymbol[];
   selectionRange?: VSCodeRange;
   originSelectionRange?: VSCodeRange;
+  children?: VSCodeSymbol[];
+  location?: VSCodeSymbol;
 }
 
 // File system entry type
