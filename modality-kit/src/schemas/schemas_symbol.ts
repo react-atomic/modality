@@ -100,3 +100,6 @@ const fileEntrySchema = z.object({
 });
 
 export type FileEntryType = z.infer<typeof fileEntrySchema>;
+export interface VSCodeFileEntryType extends FileEntryType {
+  position: VSCodePosition;
+}
