@@ -3,7 +3,8 @@
  * Provides consistent logging across storage operations with configurable levels
  */
 
-export type LogLevel = "debug" | "info" | "warn" | "error" | "success";
+const levels = ["debug", "info", "warn", "error", "success"] as const;
+export type LogLevel = (typeof levels)[number];
 
 export interface LoggerOptions {
   timestampFormat?: "iso" | "locale" | false;
@@ -41,7 +42,6 @@ export class ModalityLogger {
   }
 
   private shouldLog(level: LogLevel): boolean {
-    const levels: LogLevel[] = ["debug", "info", "warn", "error", "success"];
     return levels.indexOf(level) >= levels.indexOf(this.logLevel);
   }
 
@@ -81,6 +81,9 @@ export class ModalityLogger {
     return { prefix, result: payload };
   }
 
+  /**
+   * For control display logging level, the level could not set by user.
+   */
   log(level: LogLevel, payload: any, categroy?: string) {
     if (!this.shouldLog(level)) return;
     const { prefix, result } = this.format(level, payload, categroy);
@@ -124,9 +127,6 @@ export class ModalityLogger {
         }
         break;
       case "success":
-        console.log("\n", prefix, result, "\n");
-        break;
-      default:
         console.log("\n", prefix, result, "\n");
         break;
     }
