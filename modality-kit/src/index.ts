@@ -8,3 +8,4 @@ export { withErrorHandling, ErrorCode } from "./util_error";
 export * as SymbolType from "./schemas/schemas_symbol";
 export type { EmptyType } from "./schemas/schemas_empty";
 export { emptySchema } from "./schemas/schemas_empty";
+export { loadVersion } from "./util_version";

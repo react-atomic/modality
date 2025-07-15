@@ -2,9 +2,9 @@
   "compilerOptions": {
     "module": "none",
     "target": "ESNext",
+    "lib": ["ES2022"],
     "moduleResolution": "node",
     "esModuleInterop": true,
-    "lib": ["ES2022"],
     "sourceMap": false,
     "rootDir": "src",
     "emitDeclarationOnly": true,
