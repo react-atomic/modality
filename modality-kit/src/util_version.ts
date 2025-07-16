@@ -1,6 +1,6 @@
 type Version = `${number}.${number}.${number}`;
 export async function loadVersion(packageJsonPath: string): Promise<Version> {
-  const packageJson = await import(packageJsonPath);
+  const packageJson = require(packageJsonPath);
   try {
     const version = packageJson.version as Version;
     // Validate format: x.y.z
