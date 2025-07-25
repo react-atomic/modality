@@ -109,10 +109,10 @@ export class ModalityLogger {
         const error = result.error;
         if (error instanceof Error) {
           delete result.error;
-          const { message, stack } = error;
+          const { message, stack, ...restError } = error;
           if (stack) {
-            if (Object.keys(result).length) {
-              console.error("\n", prefix, result, "\n", stack, "\n");
+            if (Object.keys(restError).length) {
+              console.error("\n", prefix, restError, "\n", stack, "\n");
             } else {
               console.error("\n", prefix, "\n", stack, "\n");
             }
