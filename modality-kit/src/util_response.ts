@@ -44,9 +44,11 @@ export function formatSuccessResponse(
   content: SuccessData,
   meta?: any
 ): string {
+  const { instructions, ...restContent } = content; // Destructure to ensure content is an object
   return JSON.stringify({
     success: true,
-    content,
+    instructions,
+    content: restContent,
     meta,
   } as McpSuccessResponse);
 }
