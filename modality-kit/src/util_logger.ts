@@ -49,7 +49,7 @@ export class ModalityLogger {
     this.logLevel = level;
   }
 
-  private format(level: LogLevel, payload: any, categroy?: string): any {
+  private format(level: LogLevel, categroy?: string): any {
     const timestamp = this.getTimestamp();
     let prefix = "";
     switch (level) {
@@ -78,7 +78,7 @@ export class ModalityLogger {
     if (categroy) {
       prefix += ` [${categroy}]`;
     }
-    return { prefix, result: payload };
+    return prefix;
   }
 
   /**
@@ -86,58 +86,58 @@ export class ModalityLogger {
    */
   log(level: LogLevel, payload: any, categroy?: string) {
     if (!this.shouldLog(level)) return;
-    const { prefix, result } = this.format(level, payload, categroy);
+    const prefix = this.format(level, categroy);
+    console.group(prefix);
     switch (level) {
       case "debug":
-        console.debug("\n", prefix, result, "\n");
+        console.debug(payload);
         break;
       case "info":
-        console.log("\n", prefix);
-        console.dir(result, {
+        console.dir(payload, {
           depth: null,
           colors: true,
           maxArrayLength: null,
         });
-        console.log("\n");
         break;
       case "warn":
-        console.log("\n", prefix);
-        console.warn(result);
+        console.warn(payload);
         console.log("\n");
         break;
       case "error":
-        const error = result.error;
-        if (error instanceof Error) {
-          delete result.error;
+        const error = payload.error;
+        if (error instanceof Error || error.stack) {
+          delete payload.error;
           const { message, stack, ...restError } = error;
           if (stack) {
             if (Object.keys(restError).length) {
-              console.error("\n", prefix, restError, "\n", stack, "\n");
+              console.error(restError, "\n", stack);
             } else {
-              console.error("\n", prefix, "\n", stack, "\n");
+              console.error(stack);
             }
           } else {
             if (message) {
-              result.error = message;
+              payload.error = message;
             }
-            console.error("\n", prefix, result, "\n");
+            console.error(payload);
           }
         } else {
-          console.error("\n", prefix, result, "\n");
+          console.error(payload);
         }
         break;
       case "success":
-        console.log("\n", prefix, result, "\n");
+        console.error(payload);
         break;
     }
+    console.groupEnd();
   }
 
-  cook(message: any, data?: any) {
-    const payload: any = typeof message === "string" ? { message } : message;
+  cook(payload: any, data?: any) {
+    const newPayload: any =
+      typeof payload === "string" ? { message: payload } : payload;
     if (data) {
-      payload.data = data;
+      newPayload.data = data;
     }
-    return payload;
+    return newPayload;
   }
 
   debug(message: string, data?: any) {

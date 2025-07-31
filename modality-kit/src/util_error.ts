@@ -31,7 +31,7 @@ export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
     } catch (error) {
       // Log the error for debugging
       if (error instanceof ErrorCode) {
-        logger.error(`${operation || "Task operation"} failed: ${error.code}`, {
+        logger.error(`${operation || "Unknown operation"} failed: ${error.code}`, {
           code: error.code,
           cause: error.cause,
           stack: error.stack,
