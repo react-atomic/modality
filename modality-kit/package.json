@@ -1,11 +1,11 @@
 {
-  "version": "0.6.3",
+  "version": "0.6.5",
   "name": "modality-kit",
   "repository": {
     "type": "git",
     "url": "https://github.com/react-atomic/modality"
   },
-  "homepage": "https://github.com/react-atomic/modality/modality-kit",
+  "homepage": "https://github.com/react-atomic/modality/tree/main/modality-kit",
   "description": "TODO: description",
   "keywords": [
     "modality-kit"

@@ -67,6 +67,7 @@ export interface Symbol extends SymbolBase {
   selectionRange?: Range;
   originSelectionRange?: Range;
   children?: Symbol[];
+  childrenMap?: Record<string, Symbol>;
   location?: Symbol;
 }
 
@@ -85,6 +86,7 @@ export interface VSCodeSymbol extends SymbolBase {
   selectionRange?: VSCodeRange;
   originSelectionRange?: VSCodeRange;
   children?: VSCodeSymbol[];
+  childrenMap?: Record<string, VSCodeSymbol>;
   location?: VSCodeSymbol;
 }
 
