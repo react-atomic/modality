@@ -1,3 +1,6 @@
+import { ModalityLogger, type LogLevel } from './util_logger.js';
+import { ErrorCode } from './util_error.js';
+
 // Simple configuration source
 export interface CompressionConfig {
   maxTokens: number;
@@ -68,60 +71,45 @@ export interface LanguageDetectionResult {
 }
 
 // Error classes for better error handling
-export class CompressionError extends Error {
+export class CompressionError extends ErrorCode {
+  readonly code: string;
+  public details?: any;
+  
   constructor(
     message: string,
-    public code: string,
-    public details?: any
+    code: string,
+    details?: any,
+    originalError?: unknown
   ) {
-    super(message);
-    this.name = "CompressionError";
+    super(message, originalError);
+    this.code = code;
+    this.details = details;
   }
 }
 
-export class LanguageDetectionError extends Error {
+export class LanguageDetectionError extends ErrorCode {
+  readonly code: string = 'LANGUAGE_DETECTION_ERROR';
+  public fallbackLanguage: string;
+  
   constructor(
     message: string,
-    public fallbackLanguage: string
+    fallbackLanguage: string,
+    originalError?: unknown
   ) {
-    super(message);
-    this.name = "LanguageDetectionError";
+    super(message, originalError);
+    this.fallbackLanguage = fallbackLanguage;
   }
 }
 
-// Logger utility for centralized logging
-export class CompressionLogger {
-  private enabled: boolean;
-
-  constructor(enabled: boolean = false) {
-    this.enabled = enabled;
-  }
-
-  info(message: string, data?: any): void {
-    if (this.enabled) {
-      console.info(`[TextCompression] ${message}`, data || "");
-    }
-  }
-
-  warn(message: string, data?: any): void {
-    if (this.enabled) {
-      console.warn(`[TextCompression] ${message}`, data || "");
-    }
-  }
-
-  error(message: string, error?: Error): void {
-    if (this.enabled) {
-      console.error(`[TextCompression] ${message}`, error || "");
-    }
-  }
-}
+// Use ModalityLogger for centralized logging
+type CompressionLogger = ModalityLogger;
 
 // CLDR-compliant language detector with proper error handling
 export class UniversalLanguageDetector {
-  private logger: CompressionLogger;
+  private logger: ModalityLogger;
   private cache = new Map<string, LanguageDetectionResult>();
 
-  constructor(logger: CompressionLogger) {
+  constructor(logger: ModalityLogger) {
     this.logger = logger;
   }
 
@@ -457,10 +445,10 @@ export class UniversalLanguageDetector {
 
 export class IntelligentImportanceAnalyzer {
   private wordFrequencyCache = new Map<string, Map<string, number>>();
-  private logger: CompressionLogger;
+  private logger: ModalityLogger;
   private config: CompressionConfig;
 
-  constructor(logger: CompressionLogger, config: CompressionConfig) {
+  constructor(logger: ModalityLogger, config: CompressionConfig) {
     this.logger = logger;
     this.config = config;
   }
@@ -739,12 +727,12 @@ export class IntelligentImportanceAnalyzer {
 export class TextCompressionUtility {
   private languageDetector: UniversalLanguageDetector;
   private importanceAnalyzer: IntelligentImportanceAnalyzer;
-  private logger: CompressionLogger;
+  private logger: ModalityLogger;
   private config: CompressionConfig;
 
   constructor(config: Partial<CompressionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.logger = new CompressionLogger(this.config.enableLogging);
+    this.logger = ModalityLogger.getInstance('TextCompression', this.config.enableLogging ? 'info' : 'error');
     this.languageDetector = new UniversalLanguageDetector(this.logger);
     this.importanceAnalyzer = new IntelligentImportanceAnalyzer(
       this.logger,
@@ -787,7 +775,7 @@ export class TextCompressionUtility {
 
     // Validate maxTokens first
     if (maxTokens <= 0) {
-      throw new Error("maxTokens must be greater than 0");
+      throw new CompressionError("maxTokens must be greater than 0", "INVALID_MAX_TOKENS");
     }
 
     const trimmedText = text.trim();
@@ -1156,7 +1144,7 @@ export class TextCompressionUtility {
 // Simple API functions with error handling
 export async function compressUserInput(
   text: string,
-  maxTokens: number = 4000
+  maxTokens: number = DEFAULT_CONFIG.maxTokens 
 ): Promise<string> {
   try {
     const compressor = new TextCompressionUtility();
@@ -1203,7 +1191,7 @@ export async function compressConversationHistory(
 export async function analyzeTextImportance(
   text: string
 ): Promise<Array<{ text: string; score: number; reasons: string[] }>> {
-  const logger = new CompressionLogger(false);
+  const logger = ModalityLogger.getInstance('TextCompression', 'error');
   const analyzer = new IntelligentImportanceAnalyzer(logger, DEFAULT_CONFIG);
   return await analyzer.analyzeImportance(text);
 }
@@ -1220,7 +1208,7 @@ export async function compressText(
 // Fast compression for large texts
 export async function fastCompressText(
   text: string,
-  maxTokens: number = 4000
+  maxTokens: number = DEFAULT_CONFIG.maxTokens 
 ): Promise<string> {
   const compressor = new TextCompressionUtility();
   const result = await compressor.compress(text, {
@@ -1236,7 +1224,7 @@ export async function fastCompressText(
 // Compress with language detection
 export async function compressWithLanguageDetection(
   text: string,
-  maxTokens: number = 4000
+  maxTokens: number = DEFAULT_CONFIG.maxTokens 
 ): Promise<CompressionResult> {
   const compressor = new TextCompressionUtility();
   return await compressor.compress(text, {

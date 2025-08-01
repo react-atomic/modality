@@ -1,4 +1,4 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import {
   compressConversationHistory,
   compressUserInput,
@@ -8,10 +8,21 @@ import {
   analyzeTextImportance,
   TextCompressionUtility,
   UniversalLanguageDetector,
-  CompressionLogger,
   CompressionError,
   LanguageDetectionError,
 } from "../util_text_compression";
+import { ModalityLogger } from "../util_logger";
+import { ErrorCode } from "../util_error";
+import { setupConsoleMock, cleanupConsoleMock, consoleMock } from "../util_tests/console-mock";
+
+// Setup console mocking for clean test output
+beforeAll(() => {
+  setupConsoleMock();
+});
+
+afterAll(() => {
+  cleanupConsoleMock();
+});
 
 describe("Text Compression Utility", () => {
   const testText = `This is a comprehensive test of the text compression utility. It contains multiple sentences that should be analyzed for importance. Some sentences are more important than others based on their position and content. The first sentence is usually important. The last sentence is also typically significant. Code blocks like \`console.log("test")\` should be preserved. Function calls like getData() should also be maintained. This utility should handle various compression levels effectively.`;
@@ -41,12 +52,12 @@ describe("Text Compression Utility", () => {
       expect(result.length).toBeGreaterThan(0);
     });
 
-    test("should handle invalid maxTokens", () => {
+    test("should handle invalid maxTokens", async () => {
       const compressor = new TextCompressionUtility();
-      expect(() => compressor.compress("test", { maxTokens: 0 })).toThrow(
+      await expect(compressor.compress("test", { maxTokens: 0 })).rejects.toThrow(
         "maxTokens must be greater than 0"
       );
-      expect(() => compressor.compress("test", { maxTokens: -1 })).toThrow(
+      await expect(compressor.compress("test", { maxTokens: -1 })).rejects.toThrow(
         "maxTokens must be greater than 0"
       );
     });
@@ -208,7 +219,7 @@ describe("Text Compression Utility", () => {
 
   describe("Enhanced Language Detection", () => {
     // Setup for each test
-    const logger = new CompressionLogger(false); // Disable logging in tests
+    const logger = ModalityLogger.getInstance('TextCompression', 'error'); // Disable logging in tests
     const detector = new UniversalLanguageDetector(logger);
 
     describe("Intl-based Detection", () => {
@@ -344,6 +355,7 @@ describe("Text Compression Utility", () => {
       expect(error.message).toBe("Test error");
       expect(error.code).toBe("TEST_CODE");
       expect(error.details).toEqual({ detail: "test" });
+      expect(error instanceof ErrorCode).toBe(true);
     });
 
     test("should create LanguageDetectionError with fallback", () => {
@@ -351,16 +363,29 @@ describe("Text Compression Utility", () => {
 
       expect(error.name).toBe("LanguageDetectionError");
       expect(error.message).toBe("Detection failed");
+      expect(error.code).toBe("LANGUAGE_DETECTION_ERROR");
       expect(error.fallbackLanguage).toBe("en");
+      expect(error instanceof ErrorCode).toBe(true);
     });
 
     test("should log messages when enabled", () => {
-      const logger = new CompressionLogger(true);
+      const logger = ModalityLogger.getInstance('TextCompression', 'info');
 
-      // Test that logger methods exist and can be called
+      // Test that logger methods exist and can be called without throwing
       expect(() => logger.info("test")).not.toThrow();
       expect(() => logger.warn("test")).not.toThrow();
-      expect(() => logger.error("test")).not.toThrow();
+      expect(() => logger.error("test", new Error("test error"))).not.toThrow();
+    });
+
+    test("console output should be mocked during tests", () => {
+      // Verify console methods are mocked (they should be no-op functions)
+      expect(() => console.log("this should not appear")).not.toThrow();
+      expect(() => console.error("this should not appear")).not.toThrow();
+      expect(() => console.warn("this should not appear")).not.toThrow();
+      expect(() => console.info("this should not appear")).not.toThrow();
+      
+      // Verify the console mock is active
+      expect(consoleMock.isActive).toBe(true);
     });
   });
 });

@@ -1,5 +1,5 @@
 {
-  "version": "0.5.8",
+  "version": "0.6.3",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
     "build:src": "bun build src/index.ts --outdir dist",
     "build": "bun run build:clean && bun run build:src && bun run build:types",
     "test": "bun test",
-    "prepublishOnly": "npm run test"
+    "prepublishOnly": "npm run build && npm run test"
   },
   "types": "./dist/types/index.d.ts",
   "files": [
