@@ -13,7 +13,7 @@
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^24.1.0",
+    "@types/bun": "^1.2.19",
     "fastmcp": "^3.12.0",
     "typescript": "^5.8.3",
     "zod": "3.x"
@@ -31,7 +31,7 @@
     "build:types": "bunx tsc -p ./",
     "build:src": "bun build src/index.ts --outdir dist",
     "build": "bun run build:clean && bun run build:src && bun run build:types",
-    "test": "npm run build",
+    "test": "bun test",
     "prepublishOnly": "npm run test"
   },
   "types": "./dist/types/index.d.ts",
