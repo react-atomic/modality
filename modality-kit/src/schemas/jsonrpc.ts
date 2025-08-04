@@ -276,13 +276,13 @@ export class JSONRPCUtils {
   static createRequest(
     method: string,
     params?: JSONRPCParams,
-    id?: JSONRPCId
+    options: { customId?: JSONRPCId } = {}
   ): JSONRPCRequest {
     return {
       jsonrpc: JSONRPC_VERSION,
       method,
       params,
-      id: id ?? this.generateId(),
+      id: options.customId ?? this.generateId(),
     };
   }
 

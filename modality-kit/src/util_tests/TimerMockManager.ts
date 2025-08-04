@@ -34,9 +34,15 @@ import { mock, expect } from "bun:test";
  */
 export class TimerMockManager {
   private originalSetTimeout?: typeof setTimeout;
+  private originalClearTimeout?: typeof clearTimeout;
   private originalMathRandom?: () => number;
   private mockSetTimeout?: any;
+  private mockClearTimeout?: any;
+  private activeTimers = new Map<any, Function>();
+  private timerIdCounter = 0;
   private virtualClock: number = 0;
+  private isDestroyed = false;
+  private suppressTimeouts = false;
 
   /**
    * Setup timer mocks
@@ -46,42 +52,79 @@ export class TimerMockManager {
   setup(executeImmediately: boolean = true, mockRandomValue: number = 0) {
     // Store originals
     this.originalSetTimeout = globalThis.setTimeout;
+    this.originalClearTimeout = globalThis.clearTimeout;
     this.originalMathRandom = Math.random;
 
     // Mock Math.random to eliminate jitter
     Math.random = mock(() => mockRandomValue);
 
-    // Mock setTimeout with virtual clock
+    // Mock setTimeout with virtual clock and timer tracking
     this.mockSetTimeout = mock((callback: Function, delay: number) => {
       this.virtualClock += delay;
+      const timerId = ++this.timerIdCounter;
       
-      if (executeImmediately) {
-        // Execute callback immediately for fast tests
-        setImmediate(() => callback());
+      if (executeImmediately && !this.suppressTimeouts) {
+        // Execute callback immediately for fast tests, but track it
+        this.activeTimers.set(timerId, callback);
+        // Use queueMicrotask instead of setImmediate to allow synchronous operations to complete first
+        queueMicrotask(() => {
+          if (this.activeTimers.has(timerId) && !this.isDestroyed && !this.suppressTimeouts) {
+            this.activeTimers.delete(timerId);
+            callback();
+          } else {
+            this.activeTimers.delete(timerId);
+          }
+        });
       } else {
         // Use original setTimeout for real timing tests
-        return this.originalSetTimeout!(callback as any, delay);
+        const realTimerId = this.originalSetTimeout!(callback as any, delay);
+        this.activeTimers.set(timerId, callback);
+        return realTimerId;
       }
       
-      return {} as any; // Mock timer ID
+      return timerId;
+    });
+
+    // Mock clearTimeout to handle timer cancellation
+    this.mockClearTimeout = mock((timerId: any) => {
+      if (this.activeTimers.has(timerId)) {
+        this.activeTimers.delete(timerId);
+      }
+      if (this.originalClearTimeout) {
+        this.originalClearTimeout(timerId);
+      }
     });
 
     globalThis.setTimeout = this.mockSetTimeout as any;
+    globalThis.clearTimeout = this.mockClearTimeout as any;
   }
 
   /**
    * Restore original timer functions
    */
   restore() {
+    // Mark as destroyed to prevent callback execution
+    this.isDestroyed = true;
+    
+    // Clear all active timers before restoring
+    this.clearAllActiveTimers();
+    
     if (this.originalSetTimeout) {
       globalThis.setTimeout = this.originalSetTimeout;
+    }
+    if (this.originalClearTimeout) {
+      globalThis.clearTimeout = this.originalClearTimeout;
     }
     if (this.originalMathRandom) {
       Math.random = this.originalMathRandom;
     }
     
     this.virtualClock = 0;
+    this.timerIdCounter = 0;
+    this.activeTimers.clear();
     this.mockSetTimeout?.mockClear();
+    this.mockClearTimeout?.mockClear();
+    this.isDestroyed = false; // Reset for next use
   }
 
   /**
@@ -103,6 +146,34 @@ export class TimerMockManager {
    */
   getMockSetTimeout() {
     return this.mockSetTimeout;
+  }
+
+  /**
+   * Clear all active timers
+   */
+  clearAllActiveTimers() {
+    this.activeTimers.clear();
+  }
+
+  /**
+   * Get the number of active timers
+   */
+  getActiveTimerCount(): number {
+    return this.activeTimers.size;
+  }
+
+  /**
+   * Suppress timeout execution temporarily
+   */
+  suppressTimeoutExecution(): void {
+    this.suppressTimeouts = true;
+  }
+
+  /**
+   * Resume timeout execution
+   */
+  resumeTimeoutExecution(): void {
+    this.suppressTimeouts = false;
   }
 
   /**

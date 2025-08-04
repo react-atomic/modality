@@ -126,7 +126,7 @@ export class ModalityLogger {
         }
         break;
       case "success":
-        console.error(payload);
+        console.log(payload);
         break;
     }
     console.groupEnd();
