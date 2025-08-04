@@ -23,4 +23,7 @@ export type {
   JSONRPCBatchResponse,
   JSONRPCErrorResponse,
   JSONRPCValidationResult,
+  CommandExecuteParams,
+  JSONRPCError,
+  JSONRPCParams,
 } from "./schemas/jsonrpc";
