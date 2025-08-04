@@ -28,6 +28,7 @@
   "scripts": {
     "update-compile-sh": "yo reshow:compile-sh",
     "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
+    "dev": "bunx concurrently 'bunx --watch tsc  -p ./' 'bun build:src -- --watch --sourcemap=inline'",
     "build:types": "bunx tsc -p ./",
     "build:src": "bun build src/index.ts --outdir dist",
     "build": "bun run build:clean && bun run build:src && bun run build:types",

@@ -12,6 +12,7 @@
  * Usage: type MyMethod = JSONRPCMethod<MyParams, MyResult>
  * Or as object: { methodName: JSONRPCMethod<MyParams, MyResult> }
  */
+export const getUUID = () => crypto.randomUUID();
 export type JSONRPCMethod<TParams = JSONRPCParams, TResult = any> = (
   method: string,
   params?: TParams,
@@ -342,7 +343,7 @@ export class JSONRPCUtils {
    * Generate a unique ID for requests
    */
   static generateId(): string {
-    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+    return getUUID();
   }
 
   /**

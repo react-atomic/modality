@@ -6,8 +6,13 @@
  * for WebSocket communication or any async operation tracking.
  */
 
-import { JSONRPCResponse, JSONRPCUtils } from "./schemas/jsonrpc";
-const getUUID = () => crypto.randomUUID();
+import {
+  JSONRPCResponse,
+  JSONRPCUtils,
+  getUUID,
+  JSONRPCId,
+  type JSONRPCRequest,
+} from "./schemas/jsonrpc";
 
 /**
  * Configuration options for PendingOperations
@@ -56,7 +61,7 @@ export interface PendingOperationBase {
    * Unique identifier for the operation
    * @description Generated automatically by the ID generator function
    */
-  id: string;
+  id: JSONRPCId;
 
   /**
    * Timestamp when the operation was created
@@ -192,7 +197,7 @@ export interface PendingOperationStats {
  * Contains all common functionality while allowing specialized subclasses
  */
 export abstract class PendingOperationsBase {
-  protected operations = new Map<string, PendingOperation>();
+  protected operations = new Map<JSONRPCId, PendingOperation>();
   protected config: Required<PendingOperationsConfig>;
   protected cleanupIntervalHandle?: NodeJS.Timeout;
   protected eventHandlers: PendingOperationEventHandlers = {};
@@ -243,7 +248,7 @@ export abstract class PendingOperationsBase {
   /**
    * Reject a pending operation with a reason
    */
-  reject(id: string, reason?: any): boolean {
+  reject(id: JSONRPCId, reason?: any): boolean {
     const operation = this.operations.get(id);
     if (!operation) {
       return false;
@@ -303,7 +308,7 @@ export abstract class PendingOperationsBase {
   /**
    * Get all pending operations
    */
-  getAll(): Map<string, PendingOperation> {
+  getAll(): Map<JSONRPCId, PendingOperation> {
     return new Map(this.operations);
   }
 
@@ -335,7 +340,7 @@ export abstract class PendingOperationsBase {
    */
   cleanupExpired(): number {
     const now = Date.now();
-    const expiredOperations: string[] = [];
+    const expiredOperations: JSONRPCId[] = [];
 
     for (const [id, operation] of Array.from(this.operations.entries())) {
       if (operation.timeout && operation.timeout > 0) {
@@ -419,7 +424,7 @@ export abstract class PendingOperationsBase {
   /**
    * Handle operation timeout
    */
-  protected handleTimeout({ id }: { id: string }): void {
+  protected handleTimeout({ id }: { id: JSONRPCId }): void {
     const operation = this.operations.get(id);
     if (operation) {
       if (this.eventHandlers.onTimeout) {
@@ -463,7 +468,7 @@ export abstract class PendingOperationsBase {
   handleAdd(
     options: {
       timeout?: number;
-      customId?: string;
+      customId?: JSONRPCId;
     } = {}
   ) {
     const id = options.customId ?? this.config.generateId();
@@ -496,9 +501,9 @@ export class PromisePendingOperations extends PendingOperationsBase {
     data: any,
     options: {
       timeout?: number;
-      customId?: string;
+      customId?: JSONRPCId;
     } = {}
-  ): { id: string; promise: Promise<any> } {
+  ): { id: JSONRPCId; promise: Promise<any> } {
     const { id, timeout, timeoutHandle } = this.handleAdd(options);
 
     const promise = new Promise<any>((resolve, reject) => {
@@ -531,9 +536,9 @@ export class DataPendingOperations extends PendingOperationsBase {
     data: any,
     options: {
       timeout?: number;
-      customId?: string;
+      customId?: JSONRPCId;
     } = {}
-  ): { id: string } {
+  ): { id: JSONRPCId } {
     const { id, timeout, timeoutHandle } = this.handleAdd(options);
 
     const operation: DataPendingOperation = {
@@ -633,15 +638,16 @@ export class JSONRPCCall {
   /**
    * Send a JSON-RPC request and return a promise for the response
    */
-  public async handleRequest(
+  public handleRequest(
     method: string,
     params?: any,
-    options: { timeout?: number } = {}
-  ): Promise<any> {
+    options: { timeout?: number; customId?: JSONRPCId } = {}
+  ): { promise: Promise<any>; request: JSONRPCRequest } {
+    const request = JSONRPCUtils.createRequest(method, params);
+    options.customId = request.id;
     const { promise } = this.pendingRequests.add({ method, params }, options);
 
-    // Send the request (this should be handled by the WebSocket layer)
-    return promise;
+    return { promise, request };
   }
 
   /**
