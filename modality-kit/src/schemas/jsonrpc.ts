@@ -165,6 +165,7 @@ export type JSONRPCMessage =
 export interface JSONRPCValidationResult {
   /** Whether the message is valid */
   valid: boolean;
+  message: JSONRPCMessage;
   /** Error information if validation failed */
   error?: JSONRPCError;
   /** Parsed message type */
@@ -184,6 +185,7 @@ export class JSONRPCUtils {
       if (message.length === 0) {
         return {
           valid: false,
+          message,
           error: {
             code: JSONRPCErrorCode.INVALID_REQUEST,
             message: "Invalid request: batch array cannot be empty",
@@ -201,6 +203,7 @@ export class JSONRPCUtils {
 
       return {
         valid: true,
+        message,
         messageType: "batch",
       };
     }
@@ -215,6 +218,7 @@ export class JSONRPCUtils {
     if (!message || typeof message !== "object") {
       return {
         valid: false,
+        message,
         error: {
           code: JSONRPCErrorCode.INVALID_REQUEST,
           message: "Invalid request: message must be an object",
@@ -225,6 +229,7 @@ export class JSONRPCUtils {
     if (message.jsonrpc !== JSONRPC_VERSION) {
       return {
         valid: false,
+        message,
         error: {
           code: JSONRPCErrorCode.INVALID_REQUEST,
           // refine message
@@ -238,12 +243,14 @@ export class JSONRPCUtils {
       if ("result" in message || "error" in message) {
         return {
           valid: true,
+          message,
           messageType: "response",
         };
       }
 
       return {
         valid: false,
+        message,
         error: {
           code: JSONRPCErrorCode.INVALID_REQUEST,
           message: "Invalid request: method must be a string",
@@ -257,6 +264,7 @@ export class JSONRPCUtils {
 
     return {
       valid: true,
+      message,
       messageType,
     };
   }

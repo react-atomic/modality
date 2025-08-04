@@ -93,7 +93,8 @@ export class ModalityLogger {
         console.debug(payload);
         break;
       case "info":
-        console.dir(payload, {
+        console.info(payload.message);
+        console.dir(payload.data, {
           depth: null,
           colors: true,
           maxArrayLength: null,
