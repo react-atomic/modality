@@ -223,7 +223,7 @@ export abstract class PendingOperationsBase {
   /**
    * Resolve a pending operation with a result
    */
-  resolve(id: string, result?: any): boolean {
+  resolve(id: JSONRPCId, result?: any): boolean {
     const operation = this.operations.get(id);
     if (!operation) {
       return false;
@@ -273,21 +273,21 @@ export abstract class PendingOperationsBase {
   /**
    * Get a pending operation by ID
    */
-  get(id: string): PendingOperation | undefined {
+  get(id: JSONRPCId): PendingOperation | undefined {
     return this.operations.get(id);
   }
 
   /**
    * Check if an operation exists
    */
-  has(id: string): boolean {
+  has(id: JSONRPCId): boolean {
     return this.operations.has(id);
   }
 
   /**
    * Remove an operation without resolving or rejecting
    */
-  remove(id: string): boolean {
+  remove(id: JSONRPCId): boolean {
     const operation = this.operations.get(id);
     if (!operation) {
       return false;
@@ -626,7 +626,7 @@ export class JSONRPCCall {
    * Process a JSON-RPC response
    */
   public handleResponse(response: JSONRPCResponse): void {
-    const id = response.id as string;
+    const id = response.id;
 
     if (JSONRPCUtils.isSuccessResponse(response)) {
       this.pendingRequests.resolve(id, response.result);
