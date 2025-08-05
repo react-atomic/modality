@@ -350,7 +350,7 @@ export class JSONRPCUtils {
 	 * Generate a unique ID for requests
 	 */
 	static generateId(): string {
-		return getUUID();
+		return generateId();
 	}
 
 	/**
@@ -445,4 +445,4 @@ export const STANDARD_ERROR_MESSAGES: Record<JSONRPCErrorCode, string> = {
 	[JSONRPCErrorCode.VALIDATION_ERROR]: "Validation error",
 };
 
-export const getUUID = () => crypto.randomUUID();
+export const generateId = () => crypto.randomUUID();

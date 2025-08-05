@@ -9,7 +9,7 @@
 import {
   JSONRPCResponse,
   JSONRPCUtils,
-  getUUID,
+  generateId,
   JSONRPCId,
   type JSONRPCRequest,
 } from "./schemas/jsonrpc";
@@ -44,7 +44,7 @@ export interface PendingOperationsConfig {
 
   /**
    * Custom ID generator function (default: randomUUIDv7)
-   * @default getUUID
+   * @default generateId
    * @description Function to generate unique IDs for operations. Must return unique strings.
    */
   generateId?: () => string;
@@ -210,7 +210,7 @@ export abstract class PendingOperationsBase {
       defaultTimeout: 30000,
       cleanupInterval: 10000,
       enableAutoCleanup: true,
-      generateId: getUUID,
+      generateId: generateId,
       ...config,
     };
     this.eventHandlers = eventHandlers;
