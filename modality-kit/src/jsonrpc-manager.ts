@@ -206,7 +206,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
       const response = await this.processMessage(validation, options);
 
       // Send response if one was generated (requests only, not notifications)
-      if (response) {
+      if (response && (!Array.isArray(response) || response.length > 0)) {
         this.sendMessage(response, options);
       }
     } catch (err) {
