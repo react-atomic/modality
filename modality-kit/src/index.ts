@@ -13,7 +13,7 @@ export { compressWithLanguageDetection as compressText } from "./util_text_compr
 
 export { JSONRPCCall, createDataPendingOperations } from "./util_pending";
 export type { DataPendingOperation, PendingOperation } from "./util_pending";
-export * as JSONRPCTypes from "./schemas/jsonrpc";
+export { JSONRPCUtils, JSONRPCErrorCode } from "./schemas/jsonrpc";
 export type {
   JSONRPCMessage,
   JSONRPCRequest,
@@ -23,7 +23,14 @@ export type {
   JSONRPCBatchResponse,
   JSONRPCErrorResponse,
   JSONRPCValidationResult,
-  CommandExecuteParams,
   JSONRPCError,
   JSONRPCParams,
+  CommandExecuteParams,
+  NotificationSendParams,
 } from "./schemas/jsonrpc";
+
+export { JSONRPCManager } from "./jsonrpc-manager";
+export type {
+  JSONRPCManagerEvents,
+  JSONRPCManagerConfig,
+} from "./jsonrpc-manager";
