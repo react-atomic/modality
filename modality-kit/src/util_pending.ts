@@ -9,7 +9,6 @@
 import {
   JSONRPCResponse,
   JSONRPCUtils,
-  generateId,
   JSONRPCId,
   type JSONRPCRequest,
 } from "./schemas/jsonrpc";
@@ -210,7 +209,7 @@ export abstract class PendingOperationsBase {
       defaultTimeout: 30000,
       cleanupInterval: 10000,
       enableAutoCleanup: true,
-      generateId: generateId,
+      generateId: JSONRPCUtils.generateId,
       ...config,
     };
     this.eventHandlers = eventHandlers;

@@ -354,7 +354,7 @@ export class JSONRPCUtils {
    * Generate a unique ID for requests
    */
   static generateId(): string {
-    return generateId();
+    return crypto.randomUUID();
   }
 
   /**
@@ -448,5 +448,3 @@ export const STANDARD_ERROR_MESSAGES: Record<JSONRPCErrorCode, string> = {
   [JSONRPCErrorCode.RATE_LIMIT_ERROR]: "Rate limit exceeded",
   [JSONRPCErrorCode.VALIDATION_ERROR]: "Validation error",
 };
-
-export const generateId = () => crypto.randomUUID();
