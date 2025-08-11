@@ -2,7 +2,7 @@
   "compilerOptions": {
     "module": "none",
     "target": "ESNext",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "dom"],
     "moduleResolution": "node",
     "esModuleInterop": true,
     "sourceMap": false,
@@ -12,7 +12,8 @@
     "declarationDir": "dist/types",
     "strict": true,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "types": ["@types/browser-or-node", "@types/bun"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

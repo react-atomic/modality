@@ -27,7 +27,7 @@ import type {
  * Method handler function signature
  */
 type JSONRPCMethodHandler<TContext, T = JSONRPCParams> = (
-  params?: T,
+  params: T,
   context?: TContext
 ) => Promise<any> | any;
 
