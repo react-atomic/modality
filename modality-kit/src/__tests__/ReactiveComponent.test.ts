@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from 'bun:test';
-import { ReactiveHTMLElement, render } from '../ReactiveComponent';
+import { ReactiveComponent, render } from '../ReactiveComponent';
 
 // Define a simple test component
-class TestComponent extends ReactiveHTMLElement<{ count: number }> {
+class TestComponent extends ReactiveComponent<{ count: number }> {
   static tagName = 'test-component';
   constructor() {
     super({ initialState: { count: 0 } });
@@ -32,7 +32,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('ReactiveHTMLElement', () => {
+describe('ReactiveComponent', () => {
   it('should render with initial state', async () => {
     const el = document.createElement('test-component') as TestComponent;
     document.body.appendChild(el);
@@ -81,7 +81,7 @@ describe('ReactiveHTMLElement', () => {
   });
 
   it('should not update if shouldUpdate returns false', async () => {
-    class NoUpdateComponent extends ReactiveHTMLElement<{ count: number }> {
+    class NoUpdateComponent extends ReactiveComponent<{ count: number }> {
       static tagName = 'no-update-component';
       constructor() {
         super({
@@ -131,7 +131,7 @@ describe('ReactiveHTMLElement', () => {
       }
     };
 
-    class StoreComponent extends ReactiveHTMLElement {
+    class StoreComponent extends ReactiveComponent {
         static tagName = 'store-component';
       constructor() {
         super();
@@ -163,7 +163,7 @@ describe('ReactiveHTMLElement', () => {
 
   it('should force re-render on forceUpdate', async () => {
     let renderCount = 0;
-    class ForceUpdateComponent extends ReactiveHTMLElement {
+    class ForceUpdateComponent extends ReactiveComponent {
       static tagName = 'force-update-component';
       render() {
         renderCount++;
@@ -189,7 +189,7 @@ describe('ReactiveHTMLElement', () => {
   });
 
   it('should render a DocumentFragment', async () => {
-    class FragmentComponent extends ReactiveHTMLElement {
+    class FragmentComponent extends ReactiveComponent {
       static tagName = 'fragment-component';
       render() {
         const frag = document.createDocumentFragment();
@@ -213,7 +213,7 @@ describe('ReactiveHTMLElement', () => {
   it('should call componentDidMount after initial render', async () => {
     let didMountCalled = false;
     
-    class DidMountComponent extends ReactiveHTMLElement<{ count: number }> {
+    class DidMountComponent extends ReactiveComponent<{ count: number }> {
       static tagName = 'did-mount-component';
       constructor() {
         super({ initialState: { count: 0 } });
@@ -244,7 +244,7 @@ describe('ReactiveHTMLElement', () => {
     let lastNewState: any = null;
     let lastPreviousState: any = null;
     
-    class DidUpdateComponent extends ReactiveHTMLElement<{ count: number }> {
+    class DidUpdateComponent extends ReactiveComponent<{ count: number }> {
       static tagName = 'did-update-component';
       constructor() {
         super({ initialState: { count: 0 } });
@@ -294,7 +294,7 @@ describe('ReactiveHTMLElement', () => {
     let lastNewState: any = null;
     let lastPreviousState: any = null;
     
-    class ForceUpdateComponent extends ReactiveHTMLElement<{ count: number }> {
+    class ForceUpdateComponent extends ReactiveComponent<{ count: number }> {
       static tagName = 'force-update-did-update-component';
       constructor() {
         super({ initialState: { count: 5 } });

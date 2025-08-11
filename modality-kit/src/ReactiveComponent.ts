@@ -17,7 +17,7 @@ type StateType<TState> =
 /**
  * Base class for reactive web components
  */
-export abstract class ReactiveHTMLElement<TState = any> extends HTMLElement {
+export abstract class ReactiveComponent<TState = any> extends HTMLElement {
   #state: TState;
   #isRendering = false;
   #pendingUpdate = false;
@@ -169,8 +169,8 @@ export abstract class ReactiveHTMLElement<TState = any> extends HTMLElement {
    * Safely set innerHTML with Trusted Types support
    */
   #safeSetInnerHTML(element: Element, html: string): void {
-    if (ReactiveHTMLElement.#trustedTypesPolicy) {
-      element.innerHTML = ReactiveHTMLElement.#trustedTypesPolicy.createHTML(
+    if (ReactiveComponent.#trustedTypesPolicy) {
+      element.innerHTML = ReactiveComponent.#trustedTypesPolicy.createHTML(
         html
       ) as any;
     } else {
@@ -344,7 +344,7 @@ export type { ReactiveComponentOptions };
  * Generic render function for ReactiveHTMLElement components
  * Creates and displays a component with specified componentName and optional stores
  */
-export function render<T extends ReactiveHTMLElement>(
+export function render<T extends ReactiveComponent>(
   componentName: string,
   props: Record<string, any> = {},
   stores?: Array<any>
