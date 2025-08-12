@@ -1,4 +1,4 @@
-import { FastMCP } from "fastmcp";
+import type { FastMCP } from "fastmcp";
 import type { AITools } from "./schemas/schemas_tool_config.ts";
 
 /**

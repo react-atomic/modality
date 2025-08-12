@@ -36,4 +36,3 @@ export type {
 } from "./jsonrpc-manager";
 
 export { WebSocketClient } from "./websocket-client";
-export { ReactiveComponent, render, registerStore } from "./ReactiveComponent";

@@ -1,20 +1,19 @@
 {
-  "version": "0.8.11",
-  "name": "modality-kit",
+  "version": "0.0.0",
+  "name": "modality-dom",
   "repository": {
     "type": "git",
     "url": "https://github.com/react-atomic/modality"
   },
-  "homepage": "https://github.com/react-atomic/modality/tree/main/modality-kit",
-  "description": "A TypeScript-based toolkit for building web applications and managing communication with a backend server. It provides a set of utilities and components for handling JSON-RPC messages, managing pending operations, and creating reactive web components.",
-  "keywords": ["modality-kit"],
+  "homepage": "https://github.com/react-atomic/modality",
+  "description": "TODO: description",
+  "keywords": ["modality-dom"],
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {
     "@types/bun": "^1.2.19",
-    "fastmcp": "^3.12.0",
-    "typescript": "^5.8.3",
-    "zod": "3.x"
+    "@happy-dom/global-registrator": "^18.0.1",
+    "@types/browser-or-node": "^1.3.2"
   },
   "exports": {
     "require": "./dist/index.js",
@@ -24,10 +23,10 @@
   "scripts": {
     "update-compile-sh": "yo reshow:compile-sh",
     "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
+    "dev": "bunx concurrently 'bunx --watch tsc  -p ./' 'bun build:src -- --watch --sourcemap=inline'",
     "build:types": "bunx tsc -p ./",
     "build:src": "bun build src/index.ts --outdir dist",
     "build": "bun run build:clean && bun run build:src && bun run build:types",
-    "dev": "bunx concurrently 'bunx --watch tsc  -p ./' 'bun build:src -- --watch --sourcemap=inline'",
     "test": "bun test",
     "prepublishOnly": "npm run build && npm run test"
   },
