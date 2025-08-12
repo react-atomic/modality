@@ -6,6 +6,7 @@
 interface ReactiveComponentOptions<T> {
   initialState?: T;
   shouldUpdate?: (newState: T, oldState: T) => boolean;
+  stores?: Array<any>;
 }
 
 type StateCallbackHandler<TState> = (prevState: TState) => Partial<TState>;
@@ -47,8 +48,16 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
 
   constructor(options: ReactiveComponentOptions<TState> = {}) {
     super();
+    const { stores, initialState } = options;
     this.#options = options;
-    this.#state = options.initialState || ({} as TState);
+    let allState: any = { ...initialState };
+    if (null != stores && Array.isArray(stores)) {
+      this._stores = stores;
+      stores.forEach((store) => {
+        allState = { ...allState, ...store.getState() };
+      });
+    }
+    this.#state = allState;
   }
 
   /**
