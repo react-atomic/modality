@@ -104,125 +104,6 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   }
 
   /**
-   * Register a JSON-RPC method
-   */
-  registerMethod<T = JSONRPCParams>(
-    methodName: string,
-    config: JSONRPCMethodConfig<TContext, T>
-  ): void {
-    if (this.methods.has(methodName)) {
-      throw new Error(`Method '${methodName}' is already registered`);
-    }
-
-    this.methods.set(methodName, config);
-    console.log(`Registered JSON-RPC method: ${methodName}`);
-  }
-
-  /**
-   * Unregister a JSON-RPC method
-   */
-  unregisterMethod(methodName: string): boolean {
-    const removed = this.methods.delete(methodName);
-    if (removed) {
-      console.log(`Unregistered JSON-RPC method: ${methodName}`);
-    }
-    return removed;
-  }
-
-  /**
-   * Get registered method names
-   */
-  getRegisteredMethods(): string[] {
-    return Array.from(this.methods.keys());
-  }
-
-  /**
-   * Send a JSON-RPC request and return a promise for the response
-   */
-  handleRequest(
-    method: string,
-    params?: any,
-    options: any = {}
-  ): { promise: Promise<any>; request: JSONRPCRequest } {
-    const { promise, request } = super.handleRequest(method, params, options);
-
-    // Send the request (this should be handled by the WebSocket layer)
-    this.sendMessage(request, options);
-
-    return { promise, request };
-  }
-
-  /**
-   * Send a JSON-RPC notification (no response expected)
-   */
-  sendNotification(method: string, params: any, options: TContext): void {
-    const notification = JSONRPCUtils.createNotification(method, params);
-    this.sendMessage(notification, options);
-  }
-  /**
-   * Send a message (to be overridden by WebSocket implementation)
-   */
-  protected sendMessage(message: JSONRPCMessage, options: TContext): void {
-    // This method should be overridden by the WebSocket server integration
-    console.warn(
-      "JSONRPCManager.sendMessage not implemented - message not sent:",
-      message,
-      options
-    );
-  }
-
-  /**
-   * Process incoming WebSocket message
-   */
-  async validateMessage(
-    data: string | Buffer,
-    options: any = {}
-  ): Promise<void> {
-    try {
-      // Parse message
-      const messageStr = typeof data === "string" ? data : data.toString();
-      const message = JSONRPCUtils.deserialize(messageStr);
-
-      if (!message) {
-        console.error("Failed to parse JSON-RPC message:", messageStr);
-        const errorResponse = JSONRPCUtils.createErrorResponse(
-          JSONRPCUtils.createError(JSONRPCErrorCode.PARSE_ERROR, "Parse error"),
-          null
-        );
-        this.sendMessage(errorResponse, options);
-        return;
-      }
-
-      // Process the message
-      const validation = JSONRPCUtils.validateMessage(message);
-      if (!validation.valid) {
-        const errorResponse = JSONRPCUtils.createErrorResponse(
-          validation.error!,
-          (message as any).id || null
-        );
-        this.sendMessage(errorResponse, options);
-        return;
-      }
-      const response = await this.processMessage(validation, options);
-
-      // Send response if one was generated (requests only, not notifications)
-      if (response && (!Array.isArray(response) || response.length > 0)) {
-        this.sendMessage(response, options);
-      }
-    } catch (err) {
-      const error = err as Error;
-      console.error("Error handling WebSocket message:", error);
-      const errorResponse = JSONRPCUtils.createErrorResponse(
-        JSONRPCUtils.createError(
-          JSONRPCErrorCode.INTERNAL_ERROR,
-          "Internal error"
-        ),
-        null
-      );
-      this.sendMessage(errorResponse, options);
-    }
-  }
-  /**
    * Process incoming JSON-RPC message (supports batch requests)
    */
   private async processMessage(
@@ -434,9 +315,134 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   }
 
   /**
+   * Send a message (to be overridden by WebSocket implementation)
+   */
+  protected sendMessage(message: JSONRPCMessage, options: TContext): void {
+    // This method should be overridden by the WebSocket server integration
+    console.warn(
+      "JSONRPCManager.sendMessage not implemented - message not sent:",
+      message,
+      options
+    );
+  }
+
+  /**
+   * Send a JSON-RPC notification (no response expected)
+   */
+  public sendNotification(
+    method: string,
+    params: any,
+    options: TContext
+  ): void {
+    const notification = JSONRPCUtils.createNotification(method, params);
+    this.sendMessage(notification, options);
+  }
+
+  /**
+   * Register a JSON-RPC method
+   */
+  public registerMethod<T = JSONRPCParams>(
+    methodName: string,
+    config: JSONRPCMethodConfig<TContext, T>
+  ): void {
+    if (this.methods.has(methodName)) {
+      throw new Error(`Method '${methodName}' is already registered`);
+    }
+
+    this.methods.set(methodName, config);
+    console.log(`Registered JSON-RPC method: ${methodName}`);
+  }
+
+  /**
+   * Unregister a JSON-RPC method
+   */
+  public unregisterMethod(methodName: string): boolean {
+    const removed = this.methods.delete(methodName);
+    if (removed) {
+      console.log(`Unregistered JSON-RPC method: ${methodName}`);
+    }
+    return removed;
+  }
+
+  /**
+   * Get registered method names
+   */
+  public getRegisteredMethods(): string[] {
+    return Array.from(this.methods.keys());
+  }
+
+  /**
+   * Send a JSON-RPC request and return a promise for the response
+   */
+  public handleRequest(
+    method: string,
+    params?: any,
+    options: any = {}
+  ): { promise: Promise<any>; request: JSONRPCRequest } {
+    const { promise, request } = super.handleRequest(method, params, options);
+
+    // Send the request (this should be handled by the WebSocket layer)
+    this.sendMessage(request, options);
+
+    return { promise, request };
+  }
+
+  /**
+   * Process incoming WebSocket message
+   */
+  public async validateMessage(
+    data: string | Buffer,
+    options: any = {}
+  ): Promise<void> {
+    try {
+      // Parse message
+      const messageStr = typeof data === "string" ? data : data.toString();
+      const message = JSONRPCUtils.deserialize(messageStr);
+
+      if (!message) {
+        console.error("Failed to parse JSON-RPC message:", messageStr);
+        const errorResponse = JSONRPCUtils.createErrorResponse(
+          JSONRPCUtils.createError(JSONRPCErrorCode.PARSE_ERROR, "Parse error"),
+          null
+        );
+        this.sendMessage(errorResponse, options);
+        return;
+      }
+
+      // Process the message
+      const validation = JSONRPCUtils.validateMessage(message);
+      if (!validation.valid) {
+        const errorResponse = JSONRPCUtils.createErrorResponse(
+          validation.error!,
+          (message as any).id || null
+        );
+        this.sendMessage(errorResponse, options);
+        return;
+      }
+      const response = await this.processMessage(validation, options);
+
+      // Send response if one was generated (requests only, not notifications)
+      if (response && (!Array.isArray(response) || response.length > 0)) {
+        this.sendMessage(response, options);
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error("Error handling WebSocket message:", error);
+      const errorResponse = JSONRPCUtils.createErrorResponse(
+        JSONRPCUtils.createError(
+          JSONRPCErrorCode.INTERNAL_ERROR,
+          "Internal error"
+        ),
+        null
+      );
+      this.sendMessage(errorResponse, options);
+    }
+  }
+
+  /**
    * Get manager statistics
    */
-  getStats() {
+  public getStats() {
     const parentStats = super.getStats();
     return {
       ...parentStats,
@@ -448,7 +454,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   /**
    * Clean up resources
    */
-  destroy(): void {
+  public destroy(): void {
     super.destroy();
     this.methods.clear();
   }

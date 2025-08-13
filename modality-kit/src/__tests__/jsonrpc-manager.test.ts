@@ -261,7 +261,7 @@ describe("JSONRPCManager", () => {
           request.id
         );
         await manager.validateMessage(JSON.stringify(response), {});
-        await expect(promise).resolves.toBe("Success!");
+        expect(promise).resolves.toBe("Success!");
         expect(sendMessageSpy).toHaveBeenCalledTimes(1);
       });
 
@@ -273,7 +273,7 @@ describe("JSONRPCManager", () => {
         const error = JSONRPCUtils.createError(123, "External Error");
         const response = JSONRPCUtils.createErrorResponse(error, request.id);
         await manager.validateMessage(JSON.stringify(response), {});
-        await expect(promise).rejects.toThrow(error.message);
+        expect(promise).rejects.toThrow(error.message);
         expect(sendMessageSpy).toHaveBeenCalledTimes(1);
       });
     });
@@ -476,7 +476,7 @@ describe("JSONRPCManager", () => {
 
       expect(manager.getRegisteredMethods()).toBeEmpty();
       expect(manager.getStats().pendingRequests.total).toBe(0);
-      await expect(promise).rejects.toThrow("JSONRPCManager destroyed");
+      expect(promise).rejects.toThrow("JSONRPCManager destroyed");
     });
   });
 });

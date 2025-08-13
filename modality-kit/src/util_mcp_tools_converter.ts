@@ -15,8 +15,10 @@ export const setupAITools = (
   if (mcpServer) {
     Object.entries(aiTools).forEach(([toolName, aiTool]) => {
       let name = null != aiTool.name ? aiTool.name : toolName;
+      const { inputSchema, ...restAITool } = aiTool; // Destructure to avoid unused variable warning
       mcpServer.addTool({
-        ...aiTool,
+        ...restAITool,
+        parameters: inputSchema,
         name,
       });
     });
@@ -24,4 +26,3 @@ export const setupAITools = (
 
   return aiTools;
 };
-
