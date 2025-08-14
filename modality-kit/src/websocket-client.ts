@@ -11,13 +11,14 @@ interface WebSocketConfig {
   maxReconnectAttempts: number;
   initialReconnectDelay: number;
   maxReconnectDelay: number;
-  callTimeout: number;
+  lastReconnectDelay: number;
   heartbeatInterval: number;
   enableKeepAlive: boolean;
   handleMessage: (
     validMessage: JSONRPCValidationResult,
     ws: WebSocketClient
   ) => void;
+  onReceiveMessage?: (event: any) => void;
 }
 
 interface WebSocketInfo {
@@ -35,7 +36,7 @@ export class WebSocketClient {
     initialReconnectDelay: 1000, // 1 second
     maxReconnectDelay: 30000, // 30 seconds
     maxReconnectAttempts: 10, // Maximum number of reconnect attempts
-    callTimeout: 5000, // 5 seconds for call timeout
+    lastReconnectDelay: 300000, // 300 seconds for call timeout
     heartbeatInterval: 30000, // 30 seconds for heartbeat
     enableKeepAlive: true, // Enable keep-alive by default
     handleMessage: (
@@ -49,7 +50,8 @@ export class WebSocketClient {
   private reconnectAttempts = 0;
   private reconnectDelay: number;
   private heartbeatInterval: NodeJS.Timeout | null = null;
-  constructor(url: string, config?: Record<keyof WebSocketConfig, any>) {
+
+  constructor(url: string, config?: Partial<WebSocketConfig>) {
     if (!this.isValidWebSocketUrl(url)) {
       throw new Error(
         `Invalid WebSocket URL: ${url}. Must use ws:// or wss:// protocol.`
@@ -58,6 +60,7 @@ export class WebSocketClient {
     this.config = { ...this.config, ...config };
     this.url = url;
     this.reconnectDelay = this.config.initialReconnectDelay;
+    this.send = this.send.bind(this);
   }
 
   private isValidWebSocketUrl(url: string): boolean {
@@ -93,6 +96,7 @@ export class WebSocketClient {
       }
     }, this.config.heartbeatInterval);
   }
+
   private attemptReconnect(): void {
     if (this.reconnectAttempts < this.config.maxReconnectAttempts) {
       this.reconnectAttempts++;
@@ -119,7 +123,7 @@ export class WebSocketClient {
         this.reconnectAttempts = 0;
         this.reconnectDelay = this.config.initialReconnectDelay;
         this.attemptReconnect();
-      }, 300000); // Wait 60 seconds before trying again
+      }, this.config.lastReconnectDelay);
     }
   }
 
@@ -217,7 +221,6 @@ export class WebSocketClient {
       this.isManualDisconnect = false; // Reset manual disconnect flag
       this.ws = new WebSocket(this.url);
       this.ws.onopen = (event) => {
-        logger.info("WebSocket connected:", event);
         this.reconnectAttempts = 0;
         this.reconnectDelay = this.config.initialReconnectDelay; // Reset to initial delay
         this.startHeartbeat();
@@ -232,8 +235,10 @@ export class WebSocketClient {
           this.attemptReconnect();
         }
       };
-      this.ws.onmessage = (event) => {
-        logger.info("WebSocket message received:", event.data);
+      this.ws.onmessage = (event: MessageEvent) => {
+        if (this.config.onReceiveMessage) {
+          this.config.onReceiveMessage(event);
+        }
         try {
           const message = JSONRPCUtils.deserialize(event.data);
           if (!message) {

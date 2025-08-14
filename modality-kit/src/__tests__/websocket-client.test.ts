@@ -85,6 +85,7 @@ describe("WebSocketClient", () => {
         maxReconnectAttempts: 10,
         initialReconnectDelay: 1000,
         maxReconnectDelay: 30000,
+        lastReconnectDelay: 300000,
         callTimeout: 5000,
         heartbeatInterval: 30000,
         enableKeepAlive: true,
