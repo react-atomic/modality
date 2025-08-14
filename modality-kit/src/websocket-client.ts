@@ -5,6 +5,20 @@ import type {
   JSONRPCRequest,
 } from "./schemas/jsonrpc";
 
+declare global {
+  interface WebSocketStream {
+    readonly opened: Promise<{
+      readable: ReadableStream;
+      writable: WritableStream;
+    }>;
+    readonly closed: Promise<void>;
+    close(code?: number, reason?: string): void;
+  }
+  const WebSocketStream: {
+    new (url: string): WebSocketStream;
+  };
+}
+
 const logger = getLoggerInstance("WebSocket-Client");
 
 interface WebSocketConfig {
@@ -31,6 +45,8 @@ interface WebSocketInfo {
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
+  private wsStream: WebSocketStream | null = null;
+  private streamWriter: WritableStreamDefaultWriter | null = null;
   private url: string;
   private config: WebSocketConfig = {
     initialReconnectDelay: 1000, // 1 second
@@ -141,24 +157,64 @@ export class WebSocketClient {
     );
   }
 
-  public send(data: any): boolean {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+  private async initializeWebSocketStream(): Promise<boolean> {
+    if (typeof WebSocketStream === 'undefined') {
+      logger.warn("WebSocketStream not supported in this environment");
+      return false;
+    }
+
+    try {
+      this.wsStream = new WebSocketStream(this.url);
+      const { writable } = await this.wsStream.opened;
+      this.streamWriter = writable.getWriter();
+      logger.info("WebSocketStream initialized successfully");
+      return true;
+    } catch (error) {
+      logger.error("Failed to initialize WebSocketStream:", error);
+      this.wsStream = null;
+      this.streamWriter = null;
+      return false;
+    }
+  }
+
+  public async send(data: any, useStream: boolean = false): Promise<boolean> {
+    const message = JSON.stringify({
+      ...data,
+      jsonrpc: "2.0",
+      timestamp: new Date().toISOString(),
+    });
+
+    if (useStream) {
+      if (!this.streamWriter) {
+        const streamInitialized = await this.initializeWebSocketStream();
+        if (!streamInitialized) {
+          logger.warn("WebSocketStream not available, cannot send with streaming");
+          return false;
+        }
+      }
+
       try {
-        const message = JSON.stringify({
-          ...data,
-          jsonrpc: "2.0",
-          timestamp: new Date().toISOString(),
-        });
-        this.ws.send(message);
-        logger.info("Message sent:", message);
+        await this.streamWriter!.write(message);
+        logger.info("Message sent via WebSocketStream:", message);
         return true;
       } catch (error) {
-        logger.error("Error sending message:", error);
+        logger.error("Error sending via WebSocketStream:", error);
         return false;
       }
     } else {
-      logger.warn("WebSocket is not connected during send operation.");
-      return false;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(message);
+          logger.info("Message sent:", message);
+          return true;
+        } catch (error) {
+          logger.error("Error sending message:", error);
+          return false;
+        }
+      } else {
+        logger.warn("WebSocket is not connected during send operation.");
+        return false;
+      }
     }
   }
 

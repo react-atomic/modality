@@ -158,14 +158,14 @@ describe("WebSocketClient", () => {
     });
 
     describe("messaging", () => {
-        it("should send a message when connected", () => {
+        it("should send a message when connected", async () => {
             const client = new WebSocketClient(testUrl);
             client.connect();
             const wsInstance = MockWebSocket.getMostRecentInstance();
             wsInstance?._open();
 
             const data = { method: "test" };
-            const sent = client.send(data);
+            const sent = await client.send(data);
 
             expect(sent).toBe(true);
             expect(wsInstance?.send).toHaveBeenCalled();
@@ -176,12 +176,12 @@ describe("WebSocketClient", () => {
             }
         });
 
-        it("should not send a message when not connected", () => {
+        it("should not send a message when not connected", async () => {
             const client = new WebSocketClient(testUrl);
             const logger = getLoggerInstance("test");
             const warnSpy = spyOn(logger, 'warn');
             
-            const sent = client.send({ method: "test" });
+            const sent = await client.send({ method: "test" });
 
             expect(sent).toBe(false);
         });
