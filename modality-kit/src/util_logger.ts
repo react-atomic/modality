@@ -92,26 +92,35 @@ export class ModalityLogger {
       case "debug":
         console.debug(payload);
         break;
-      case "info":
-        console.info(payload.message);
-        console.dir(payload.data, {
+      case "info": {
+        const { message, ...restPayload } = payload;
+        console.info(message);
+        console.dir(restPayload, {
           depth: null,
           colors: true,
           maxArrayLength: null,
         });
         break;
-      case "warn":
+      }
+      case "warn": {
+        const { message, ...restPayload } = payload;
         console.warn(payload);
-        console.log("\n");
+        console.dir(restPayload, {
+          depth: null,
+          colors: true,
+          maxArrayLength: null,
+        });
         break;
-      case "error":
+      }
+      case "error": {
         const error = payload.error;
         if (error instanceof Error || error.stack) {
           delete payload.error;
           const { message, stack, ...restError } = error;
           if (stack) {
             if (Object.keys(restError).length) {
-              console.error(restError, "\n", stack);
+              console.error(restError);
+              console.log(stack);
             } else {
               console.error(stack);
             }
@@ -125,6 +134,7 @@ export class ModalityLogger {
           console.error(payload);
         }
         break;
+      }
       case "success":
         console.log(payload);
         break;
