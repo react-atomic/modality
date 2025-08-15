@@ -80,6 +80,73 @@ describe('ReactiveComponent', () => {
     expect(p?.textContent).toBe('Count: 1');
   });
 
+  it('should handle event delegation at different DOM levels', async () => {
+    // Test component with handlers at different shadow DOM levels
+    class MultiLevelComponent extends ReactiveComponent<{ directClicks: number; nestedClicks: number; deepClicks: number }> {
+      static tagName = 'multi-level-component';
+      constructor() {
+        super({ initialState: { directClicks: 0, nestedClicks: 0, deepClicks: 0 } });
+      }
+
+      render() {
+        return `
+          <div data-click="handleDirectClick">Direct child handler
+            <div>
+              <button data-click="handleNestedClick">Nested handler</button>
+              <div>
+                <span>
+                  <button data-click="handleDeepClick">Deep nested handler</button>
+                </span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      handleDirectClick() {
+        this.setState(prev => ({ ...prev, directClicks: prev.directClicks + 1 }));
+      }
+
+      handleNestedClick() {
+        this.setState(prev => ({ ...prev, nestedClicks: prev.nestedClicks + 1 }));
+      }
+
+      handleDeepClick() {
+        this.setState(prev => ({ ...prev, deepClicks: prev.deepClicks + 1 }));
+      }
+    }
+
+    if (!customElements.get(MultiLevelComponent.tagName)) {
+      customElements.define(MultiLevelComponent.tagName, MultiLevelComponent);
+    }
+
+    const el = document.createElement('multi-level-component') as MultiLevelComponent;
+    document.body.appendChild(el);
+    await new Promise(resolve => queueMicrotask(resolve));
+
+    // Test direct child of shadow root (most critical case for the bug)
+    const directDiv = el.shadowRoot?.querySelector('div[data-click="handleDirectClick"]') as HTMLElement;
+    directDiv?.click();
+    await new Promise(resolve => queueMicrotask(resolve));
+    expect(el.state.directClicks).toBe(1);
+
+    // Test nested button
+    const nestedButton = el.shadowRoot?.querySelector('button[data-click="handleNestedClick"]') as HTMLButtonElement;
+    nestedButton?.click();
+    await new Promise(resolve => queueMicrotask(resolve));
+    expect(el.state.nestedClicks).toBe(1);
+
+    // Test deeply nested button
+    const deepButton = el.shadowRoot?.querySelector('button[data-click="handleDeepClick"]') as HTMLButtonElement;
+    deepButton?.click();
+    await new Promise(resolve => queueMicrotask(resolve));
+    expect(el.state.deepClicks).toBe(1);
+
+    // Verify other counts didn't change
+    expect(el.state.directClicks).toBe(1);
+    expect(el.state.nestedClicks).toBe(1);
+  });
+
   it('should not update if shouldUpdate returns false', async () => {
     class NoUpdateComponent extends ReactiveComponent<{ count: number }> {
       static tagName = 'no-update-component';

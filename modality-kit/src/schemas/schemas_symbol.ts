@@ -58,7 +58,6 @@ interface SymbolBase {
   id?: string; // Optional unique identifier
   uri?: string;
   detail?: string;
-  content?: string; // The actual text content at this location
   containerName?: string;
 }
 

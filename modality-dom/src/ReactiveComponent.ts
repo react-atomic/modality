@@ -26,7 +26,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
   #hasRendered = false;
   #shadow!: ShadowRoot;
   #options: ComponentOptions<TState>;
-  #delegatedEventListeners: { [key: string]: EventListener } = {};
+  #delegatedEventListeners: Map<string, EventListener> = new Map();
   #eventTypes = [
     "click",
     "dblclick",
@@ -65,7 +65,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
    * Get current state (immutable)
    */
   get state(): Readonly<TState> {
-    return Object.freeze({ ...this.#state });
+    return this.#state as Readonly<TState>;
   }
 
   /**
@@ -77,7 +77,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
     _action?: any,
     prevState?: TState
   ): TState {
-    const oldState = prevState || { ...this.#state };
+    const oldState = prevState || this.#state;
 
     let newUpdates;
     if (typeof updator === "function") {
@@ -94,20 +94,18 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
       !this.#options.shouldUpdate(newState, oldState)
     ) {
       return this.#state;
-    } else {
-      this.#state = newState;
-
-      // Trigger re-render with previous state for componentDidUpdate
-      this.#scheduleUpdate(oldState);
-      return newState;
     }
+
+    this.#state = newState;
+    this.#scheduleUpdate(oldState);
+    return newState;
   }
 
   /**
    * Force a re-render without state change
    */
   forceUpdate(): void {
-    this.#scheduleUpdate({ ...this.#state });
+    this.#scheduleUpdate(this.#state);
   }
 
   /**
@@ -136,14 +134,13 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
     this.#pendingUpdate = false;
 
     const wasFirstRender = !this.#hasRendered;
-    const prevState = previousState || { ...this.#state };
+    const prevState = previousState || this.#state;
 
     try {
       this.#updateDOM();
       this.#hasRendered = true;
 
-      // Call componentDidUpdate lifecycle method after DOM update (but not on first render)
-      if (!wasFirstRender && typeof this.componentDidUpdate === "function") {
+      if (!wasFirstRender && this.componentDidUpdate) {
         this.componentDidUpdate(this.#state, prevState);
       }
     } catch (error) {
@@ -153,40 +150,22 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
     }
   }
 
-  /**
-   * Create a TrustedHTML policy for safe HTML insertion
-   */
-  static #trustedTypesPolicy = (() => {
-    if (
-      typeof window !== "undefined" &&
-      window.trustedTypes &&
-      window.trustedTypes.createPolicy
-    ) {
-      try {
-        return window.trustedTypes.createPolicy("reactive-component", {
-          createHTML: (string: string) => string,
-        });
-      } catch (e) {
-        // Policy might already exist, try to get existing one
-        console.warn("Failed to create trusted types policy:", e);
-        return null;
-      }
-    }
-    return null;
-  })();
+  static #trustedTypesPolicy = typeof window !== "undefined" && window.trustedTypes
+    ? (() => {
+        try {
+          return window.trustedTypes.createPolicy("reactive-component", {
+            createHTML: (string: string) => string,
+          });
+        } catch {
+          return null;
+        }
+      })()
+    : null;
 
-  /**
-   * Safely set innerHTML with Trusted Types support
-   */
   #safeSetInnerHTML(element: Element, html: string): void {
-    if (ReactiveComponent.#trustedTypesPolicy) {
-      element.innerHTML = ReactiveComponent.#trustedTypesPolicy.createHTML(
-        html
-      ) as any;
-    } else {
-      // Fallback for browsers without Trusted Types support
-      element.innerHTML = html;
-    }
+    element.innerHTML = ReactiveComponent.#trustedTypesPolicy
+      ? (ReactiveComponent.#trustedTypesPolicy.createHTML(html) as any)
+      : html;
   }
 
   /**
@@ -198,32 +177,14 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
       this.#setupEventDelegation();
     }
 
-    // Clear existing content safely (avoid TrustedHTML violations)
-    if (
-      typeof window !== "undefined" &&
-      window.trustedTypes &&
-      window.trustedTypes.emptyHTML
-    ) {
-      this.#shadow.innerHTML = window.trustedTypes.emptyHTML as any;
-    } else {
-      // Fallback: remove children without innerHTML
-      while (this.#shadow.firstChild) {
-        this.#shadow.removeChild(this.#shadow.firstChild);
-      }
-    }
-
-    // Call render method and update DOM
+    this.#shadow.replaceChildren();
     const renderResult = this.render();
 
     if (typeof renderResult === "string") {
-      // Use safe DOM manipulation with Trusted Types support
       const template = document.createElement("template");
       this.#safeSetInnerHTML(template, renderResult);
       this.#shadow.appendChild(template.content.cloneNode(true));
-    } else if (
-      renderResult instanceof DocumentFragment ||
-      renderResult instanceof Element
-    ) {
+    } else if (renderResult) {
       this.#shadow.appendChild(renderResult);
     }
   }
@@ -233,19 +194,10 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
    */
   #setupEventDelegation(): void {
     this.#eventTypes.forEach((eventType) => {
-      const listener = (e: Event) => {
-        this.#handleDelegatedEvent(e);
-      };
-
-      // Store listener reference for proper cleanup
-      this.#delegatedEventListeners[eventType] = listener;
-
-      // Use passive listeners for better performance (except for events that might need preventDefault)
-      const usePassive = !["mousedown", "keydown", "submit"].includes(
-        eventType
-      );
+      const listener = this.#handleDelegatedEvent.bind(this);
+      this.#delegatedEventListeners.set(eventType, listener);
       this.#shadow.addEventListener(eventType, listener, {
-        passive: usePassive,
+        passive: !["mousedown", "keydown", "submit"].includes(eventType),
       });
     });
   }
@@ -254,28 +206,20 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
    * Handle delegated events using React Atomic pattern
    */
   #handleDelegatedEvent(e: Event): void {
-    const eventType = e.type;
     const target = e.target as Element;
-
     if (!target) return;
 
-    // Find all elements that might handle this event type using data attributes
-    const handlerAttribute = `data-${eventType}`;
-    const elementsWithHandlers = this.#shadow.querySelectorAll(
-      `[${handlerAttribute}]`
-    );
-
-    // Check if target matches or is contained within handler elements
-    Array.from(elementsWithHandlers).forEach((element) => {
-      if (target.isSameNode(element) || element.contains(target)) {
-        const handlerName = element.getAttribute(handlerAttribute);
-
-        if (handlerName && typeof (this as any)[handlerName] === "function") {
-          // Call the handler method
-          (this as any)[handlerName](e);
-        }
+    const handlerAttribute = `data-${e.type}`;
+    let element: Element | null = target;
+    
+    while (element && this.#shadow.contains(element)) {
+      const handlerName = element.getAttribute(handlerAttribute);
+      if (handlerName && typeof (this as any)[handlerName] === "function") {
+        (this as any)[handlerName](e);
+        break;
       }
-    });
+      element = element.parentElement;
+    }
   }
 
   /**
@@ -301,28 +245,20 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
     // Initial render (no previous state for first render)
     this.#performUpdate();
 
-    // Call componentDidMount lifecycle method after initial render
-    if (typeof this.componentDidMount === "function") {
-      this.componentDidMount();
-    }
+    this.componentDidMount?.();
   }
   /**
    * Lifecycle method - called when component is disconnected
    */
   disconnectedCallback(): void {
-    // Clean up event listeners to prevent memory leaks
-    if (this.#shadow && Object.keys(this.#delegatedEventListeners).length > 0) {
-      this.#eventTypes.forEach((eventType) => {
-        const listener = this.#delegatedEventListeners[eventType];
-        if (listener) {
-          this.#shadow.removeEventListener(eventType, listener);
-        }
+    if (this.#shadow && this.#delegatedEventListeners.size > 0) {
+      this.#delegatedEventListeners.forEach((listener, eventType) => {
+        this.#shadow.removeEventListener(eventType, listener);
       });
-      this.#delegatedEventListeners = {};
+      this.#delegatedEventListeners.clear();
     }
 
-    // Auto cleanup all store listeners to prevent memory leaks
-    if (this._storeListeners && this._storeListeners.length > 0) {
+    if (this._storeListeners?.length) {
       this._storeListeners.forEach(({ store, listener }) => {
         store.removeListener(listener);
       });
