@@ -3,17 +3,18 @@
  * Adds state management and automatic re-rendering capabilities
  */
 
-interface ReactiveComponentOptions<T> {
+export type SetStateAction<TState> =
+  | Partial<TState>
+  | StateUpdater<TState>
+  | TState;
+
+export interface ComponentOptions<T> {
   initialState?: T;
   shouldUpdate?: (newState: T, oldState: T) => boolean;
   stores?: Array<any>;
 }
 
-type StateCallbackHandler<TState> = (prevState: TState) => Partial<TState>;
-type StateType<TState> =
-  | Partial<TState>
-  | StateCallbackHandler<TState>
-  | TState;
+export type StateUpdater<TState> = (prevState: TState) => Partial<TState>;
 
 /**
  * Base class for reactive web components
@@ -24,7 +25,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
   #pendingUpdate = false;
   #hasRendered = false;
   #shadow!: ShadowRoot;
-  #options: ReactiveComponentOptions<TState>;
+  #options: ComponentOptions<TState>;
   #delegatedEventListeners: { [key: string]: EventListener } = {};
   #eventTypes = [
     "click",
@@ -46,7 +47,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
   _stores?: Array<any>;
   _storeListeners?: Array<{ store: any; listener: Function }>;
 
-  constructor(options: ReactiveComponentOptions<TState> = {}) {
+  constructor(options: ComponentOptions<TState> = {}) {
     super();
     const { stores, initialState } = options;
     this.#options = options;
@@ -72,7 +73,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
    * Also compatible with reshow-flux-base listener: setState(state, action, prevState)
    */
   setState(
-    updator: StateType<TState>,
+    updator: SetStateAction<TState>,
     _action?: any,
     prevState?: TState
   ): TState {
@@ -80,7 +81,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
 
     let newUpdates;
     if (typeof updator === "function") {
-      newUpdates = (updator as StateCallbackHandler<TState>)(this.#state);
+      newUpdates = (updator as StateUpdater<TState>)(this.#state);
     } else {
       newUpdates = updator;
     }
@@ -347,8 +348,6 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
   abstract render(): string | DocumentFragment | Element;
 }
 
-export type { ReactiveComponentOptions };
-
 /**
  * Generic render function for ReactiveHTMLElement components
  * Creates and displays a component with specified componentName and optional stores
@@ -385,34 +384,4 @@ export function render<T extends ReactiveComponent>(
   }
 
   return element as T;
-}
-
-const lazyStores = { current: {} as any };
-
-export function registerStore(componentName: string, stores: Array<any>): void {
-  const connectionSectionElement = document.querySelector(
-    "connection-section"
-  ) as any;
-  if (connectionSectionElement) {
-    connectionSectionElement._stores = stores;
-  } else {
-    lazyStores.current[componentName] = stores;
-  }
-}
-
-if ("undefined" !== typeof document) {
-  document.addEventListener("DOMContentLoaded", () => {
-    const promise = Object.keys(lazyStores.current).map(
-      async (componentName) => {
-        const connectionSectionElement = document.querySelector(
-          componentName
-        ) as any;
-        if (connectionSectionElement) {
-          connectionSectionElement._stores = lazyStores.current[componentName];
-          delete lazyStores.current[componentName];
-        }
-      }
-    );
-    Promise.all(promise);
-  });
 }
