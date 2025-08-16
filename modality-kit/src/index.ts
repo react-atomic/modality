@@ -36,3 +36,5 @@ export type {
 } from "./jsonrpc-manager";
 
 export { WebSocketClient } from "./websocket-client";
+
+export { LruCache } from "./lruCache";
