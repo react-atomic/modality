@@ -13,7 +13,8 @@ export { compressWithLanguageDetection as compressText } from "./util_text_compr
 
 export { JSONRPCCall, createDataPendingOperations } from "./util_pending";
 export type { DataPendingOperation, PendingOperation } from "./util_pending";
-export { JSONRPCUtils, JSONRPCErrorCode } from "./schemas/jsonrpc";
+export { JSONRPCUtils } from "./JSONRPCUtils";
+export { JSONRPCErrorCode } from "./schemas/jsonrpc";
 export type {
   JSONRPCMessage,
   JSONRPCRequest,

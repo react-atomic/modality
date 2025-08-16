@@ -10,9 +10,9 @@ import { JSONRPCCall } from "./util_pending";
 
 import {
   JSONRPCErrorCode,
-  JSONRPCUtils,
   STANDARD_ERROR_MESSAGES,
 } from "./schemas/jsonrpc";
+import { JSONRPCUtils } from "./JSONRPCUtils";
 import type {
   JSONRPCValidationResult,
   JSONRPCRequest,

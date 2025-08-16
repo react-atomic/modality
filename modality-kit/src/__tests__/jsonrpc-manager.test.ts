@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import {
   JSONRPCErrorCode,
-  JSONRPCUtils,
   STANDARD_ERROR_MESSAGES,
 } from "../schemas/jsonrpc";
+import { JSONRPCUtils } from "../JSONRPCUtils";
 import type {
   JSONRPCManagerConfig,
   JSONRPCManagerEvents,

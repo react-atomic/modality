@@ -8,10 +8,10 @@
 
 import {
   JSONRPCResponse,
-  JSONRPCUtils,
   JSONRPCId,
   type JSONRPCRequest,
 } from "./schemas/jsonrpc";
+import { JSONRPCUtils } from "./JSONRPCUtils";
 
 /**
  * Configuration options for PendingOperations

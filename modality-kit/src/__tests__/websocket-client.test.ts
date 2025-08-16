@@ -20,7 +20,7 @@ mock.module("../util_logger", () => ({
 }));
 
 // Mock JSONRPCUtils to avoid actual validation logic
-mock.module("../schemas/jsonrpc", () => ({
+mock.module("../JSONRPCUtils", () => ({
   JSONRPCUtils: {
     deserialize: (data: string) => JSON.parse(data),
     validateMessage: (message: any) => ({

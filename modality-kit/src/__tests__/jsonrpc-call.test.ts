@@ -12,7 +12,6 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { JSONRPCCall } from "../util_pending";
 import {
-  JSONRPCUtils,
   JSONRPCErrorCode,
   type JSONRPCRequest,
   type JSONRPCResponse,
@@ -21,6 +20,7 @@ import {
   type JSONRPCError,
   type JSONRPCId
 } from "../schemas/jsonrpc";
+import { JSONRPCUtils } from "../JSONRPCUtils";
 import { TimerMockManager } from "../util_tests/TimerMockManager";
 import { ConsoleMock } from "../util_tests/console-mock";
 

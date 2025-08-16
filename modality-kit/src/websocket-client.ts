@@ -1,4 +1,4 @@
-import { JSONRPCUtils } from "./schemas/jsonrpc";
+import { JSONRPCUtils } from "./JSONRPCUtils";
 import { getLoggerInstance } from "./util_logger";
 import type {
   JSONRPCValidationResult,
