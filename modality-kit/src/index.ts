@@ -39,3 +39,9 @@ export type {
 export { WebSocketClient } from "./websocket-client";
 
 export { LruCache } from "./lruCache";
+
+
+/**
+ * For test tool
+ */
+export { isTestEnvironment } from "./util_tests/isTestEnvironment";
