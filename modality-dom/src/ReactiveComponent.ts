@@ -150,17 +150,18 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
     }
   }
 
-  static #trustedTypesPolicy = typeof window !== "undefined" && window.trustedTypes
-    ? (() => {
-        try {
-          return window.trustedTypes.createPolicy("reactive-component", {
-            createHTML: (string: string) => string,
-          });
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  static #trustedTypesPolicy =
+    typeof window !== "undefined" && window.trustedTypes
+      ? (() => {
+          try {
+            return window.trustedTypes.createPolicy("reactive-component", {
+              createHTML: (string: string) => string,
+            });
+          } catch {
+            return null;
+          }
+        })()
+      : null;
 
   #safeSetInnerHTML(element: Element, html: string): void {
     element.innerHTML = ReactiveComponent.#trustedTypesPolicy
@@ -211,7 +212,7 @@ export abstract class ReactiveComponent<TState = any> extends HTMLElement {
 
     const handlerAttribute = `data-${e.type}`;
     let element: Element | null = target;
-    
+
     while (element && this.#shadow.contains(element)) {
       const handlerName = element.getAttribute(handlerAttribute);
       if (handlerName && typeof (this as any)[handlerName] === "function") {
@@ -293,10 +294,9 @@ export function render<T extends ReactiveComponent>(
   props: Record<string, any> = {},
   stores?: Array<any>
 ): T {
-  const element = document.createElement(componentName);
-
   // Assign all props as attributes using Object.keys
   const { appendTo = document.body, ...restProps } = props;
+  const element = document.createElement(componentName);
   Object.keys(restProps).forEach((key) => {
     const value = restProps[key];
 
@@ -320,4 +320,26 @@ export function render<T extends ReactiveComponent>(
   }
 
   return element as T;
+}
+
+// Track rendered unique components for cleanup
+const uniqueComponents = new Map<string, HTMLElement>();
+
+/**
+ * Unique render function that overwrites previous renders of the same component
+ * Only one instance of each componentName can exist at a time
+ */
+
+export function renderUnique<T extends ReactiveComponent>(
+  componentName: string,
+  props: Record<string, any> = {},
+  stores?: Array<any>
+): T {
+  const existingElement = uniqueComponents.get(componentName);
+  if (existingElement && existingElement.parentNode) {
+    existingElement.parentNode.removeChild(existingElement);
+  }
+  const nextElement = render(componentName, props, stores) as T;
+  uniqueComponents.set(componentName, nextElement);
+  return nextElement;
 }

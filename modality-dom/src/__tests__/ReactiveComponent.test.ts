@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test';
-import { ReactiveComponent, render } from '../ReactiveComponent';
+import { ReactiveComponent, render, renderUnique } from '../ReactiveComponent';
 
 // Define a simple test component
 class TestComponent extends ReactiveComponent<{ count: number }> {
@@ -419,5 +419,37 @@ describe('render function', () => {
     expect(el.id).toBe('my-comp');
     expect(el.getAttribute('data-test')).toBe('true');
     expect(el.getAttribute('myprop')).toBe('{"a":1}');
+  });
+});
+
+describe('renderUnique function', () => {
+  it('should replace an existing component with a new one', async () => {
+    // 1. Render the component for the first time
+    const el1 = renderUnique<TestComponent>('test-component', { id: 'first' });
+    expect(el1.id).toBe('first');
+    expect(document.body.contains(el1)).toBe(true);
+    expect(document.querySelectorAll('test-component').length).toBe(1);
+
+    // 2. Render the same component again with different props
+    const el2 = renderUnique<TestComponent>('test-component', { id: 'second' });
+    
+    // 3. Verify the first element is gone
+    expect(document.body.contains(el1)).toBe(false);
+    
+    // 4. Verify the second element is in the DOM
+    expect(el2.id).toBe('second');
+    expect(document.body.contains(el2)).toBe(true);
+    
+    // 5. Verify only one instance of the component exists
+    const components = document.querySelectorAll('test-component');
+    expect(components.length).toBe(1);
+    expect(components[0]).toBe(el2);
+  });
+
+  it('should render a new component if one does not exist', () => {
+    const el = renderUnique<TestComponent>('test-component');
+    expect(el).toBeInstanceOf(TestComponent);
+    expect(document.body.contains(el)).toBe(true);
+    expect(document.querySelectorAll('test-component').length).toBe(1);
   });
 });

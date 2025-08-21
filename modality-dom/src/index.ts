@@ -1,4 +1,4 @@
-export { ReactiveComponent, render } from "./ReactiveComponent";
+export { ReactiveComponent, render, renderUnique } from "./ReactiveComponent";
 export type {
   SetStateAction,
   StateUpdater,
