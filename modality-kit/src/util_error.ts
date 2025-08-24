@@ -1,7 +1,7 @@
 import { getLoggerInstance } from "./util_logger";
 import { formatErrorResponse } from "./util_response";
 
-const logger = getLoggerInstance("General Error");
+const logger = getLoggerInstance("Safe to Handle");
 
 /**
  * Base class for task-related errors
@@ -31,11 +31,14 @@ export function withErrorHandling<T extends (...args: any[]) => Promise<any>>(
     } catch (error) {
       // Log the error for debugging
       if (error instanceof ErrorCode) {
-        logger.error(`${operation || "Unknown operation"} failed: ${error.code}`, {
-          code: error.code,
-          cause: error.cause,
-          stack: error.stack,
-        });
+        logger.error(
+          `${operation || "Unknown operation"} failed: ${error.code}`,
+          {
+            code: error.code,
+            cause: error.cause,
+            stack: error.stack,
+          }
+        );
       } else if (error instanceof Error) {
         logger.error(`${operation || "Error"} failed`, error);
       } else {
