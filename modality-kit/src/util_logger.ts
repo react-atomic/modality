@@ -3,7 +3,7 @@
  * Provides consistent logging across storage operations with configurable levels
  */
 
-const levels = ["debug", "info", "warn", "error", "success"] as const;
+const levels = [null, "debug", "info", "warn", "error", "success"] as const;
 export type LogLevel = (typeof levels)[number];
 
 export interface LoggerOptions {
@@ -21,10 +21,7 @@ export class ModalityLogger {
     } else {
       this.options = { ...this.options, ...logOption };
     }
-    const processEnvLogLevel = process.env.MODALITY_LOG_LEVEL as LogLevel;
-    this.logLevel =
-      logLevel ||
-      (-1 !== levels.indexOf(processEnvLogLevel) ? processEnvLogLevel : "info");
+    this.logLevel = logLevel || null;
   }
 
   public static getInstance(
@@ -41,7 +38,16 @@ export class ModalityLogger {
     return now.toISOString();
   }
 
+  private initLogLevel(): void {
+    const processEnvLogLevel = process.env.MODALITY_LOG_LEVEL as LogLevel;
+    this.logLevel =
+      -1 !== levels.indexOf(processEnvLogLevel) ? processEnvLogLevel : "info";
+  }
+
   private shouldLog(level: LogLevel): boolean {
+    if (!this.logLevel) {
+      this.initLogLevel();
+    }
     return levels.indexOf(level) >= levels.indexOf(this.logLevel);
   }
 
