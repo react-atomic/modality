@@ -13,18 +13,18 @@ export interface LoggerOptions {
 
 export class ModalityLogger {
   private options: LoggerOptions = {};
-  private logLevel: LogLevel = "info";
+  private logLevel: LogLevel;
 
-  private constructor(
-    logOption: string | LoggerOptions,
-    logLevel: LogLevel = "info"
-  ) {
+  private constructor(logOption: string | LoggerOptions, logLevel?: LogLevel) {
     if (typeof logOption === "string") {
       this.options.name = logOption;
     } else {
       this.options = { ...this.options, ...logOption };
     }
-    this.logLevel = logLevel;
+    const processEnvLogLevel = process.env.MODALITY_LOG_LEVEL as LogLevel;
+    this.logLevel =
+      logLevel ||
+      (-1 !== levels.indexOf(processEnvLogLevel) ? processEnvLogLevel : "info");
   }
 
   public static getInstance(
