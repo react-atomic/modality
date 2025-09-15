@@ -1,16 +1,18 @@
 import type { FastMCP } from "fastmcp";
 import type { AITools } from "./schemas/schemas_tool_config.ts";
+import type { z } from "zod";
 
 /**
  * Setup function that optionally registers AITools with MCP server
- * @param aiTools - The AITools object to optionally register
+ * Automatically infers and preserves schema types from the input
+ * @param aiTools - The AITools object with schema mapping
  * @param mcpServer - Optional MCP server to register tools with
- * @returns The AITools object
+ * @returns The same AITools object with preserved types
  */
-export const setupAITools = (
-  aiTools: AITools,
+export const setupAITools = <T extends Record<string, z.ZodSchema>>(
+  aiTools: AITools<T>,
   mcpServer?: FastMCP
-): AITools => {
+): AITools<T> => {
   // Only register tools with MCP server if provided
   if (mcpServer) {
     Object.entries(aiTools).forEach(([toolName, aiTool]) => {
