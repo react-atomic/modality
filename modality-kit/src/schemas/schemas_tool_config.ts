@@ -17,5 +17,6 @@ export interface AITool {
 
 /**
  * Type for a collection of AI tools
+ * @template T - The key type for the tools record, defaults to string
  */
-export type AITools = Record<string, AITool>;
+export type AITools<T extends string | number | symbol = string> = Record<T, AITool>;
