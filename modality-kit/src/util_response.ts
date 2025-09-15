@@ -74,14 +74,6 @@ export function formatErrorResponse(
       operation,
       meta,
     };
-  } else if (errorData instanceof Error) {
-    // Handle standard Error instances
-    errorResponse = {
-      success: false,
-      error: errorData.message,
-      operation,
-      meta,
-    };
   } else if (errorData instanceof ErrorCode) {
     errorResponse = {
       success: false,
@@ -89,6 +81,14 @@ export function formatErrorResponse(
       code: errorData.code,
       reason: errorData.cause?.message,
       operation: operation,
+      meta,
+    };
+  } else if (errorData instanceof Error) {
+    // Handle standard Error instances
+    errorResponse = {
+      success: false,
+      error: errorData.message,
+      operation,
       meta,
     };
   } else if (
