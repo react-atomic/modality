@@ -101,11 +101,13 @@ export class ModalityLogger {
       case "info": {
         const { message, ...restPayload } = payload;
         console.info(message);
-        console.dir(restPayload, {
-          depth: null,
-          colors: true,
-          maxArrayLength: null,
-        });
+        if (Object.keys(restPayload).length) {
+          console.dir(restPayload, {
+            depth: null,
+            colors: true,
+            maxArrayLength: null,
+          });
+        }
         break;
       }
       case "warn": {
