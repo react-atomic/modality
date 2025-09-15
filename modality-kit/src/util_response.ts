@@ -1,3 +1,5 @@
+import { ErrorCode } from "./util_error";
+
 /**
  * Utility functions for formatting MCP responses
  *
@@ -17,6 +19,7 @@ export interface McpErrorResponse {
   error: string;
   code?: string;
   operation?: string;
+  reason?: string; // Optional detailed reason for the error
   meta?: Record<string, any>; // Optional metadata about the error
 }
 
@@ -77,6 +80,15 @@ export function formatErrorResponse(
       success: false,
       error: errorData.message,
       operation,
+      meta,
+    };
+  } else if (errorData instanceof ErrorCode) {
+    errorResponse = {
+      success: false,
+      error: errorData.message,
+      code: errorData.code,
+      reason: errorData.cause?.message,
+      operation: operation,
       meta,
     };
   } else if (
