@@ -23,21 +23,19 @@ export interface McpErrorResponse {
   meta?: Record<string, any>; // Optional metadata about the error
 }
 
-interface SuccessData {
+interface SuccessData extends Record<string, any> {
   message?: string;
   instructions?: string;
-  [key: string]: any; // Allow additional properties
 }
 
 /**
  * Generic error data interface for MCP error responses
  */
-interface ErrorData {
+interface ErrorData extends Record<string, any> {
   success?: boolean; // for supporting graceful error, possibly set to true
   message: string;
   code?: string;
   operation?: string;
-  [key: string]: any; // Allow additional properties
 }
 
 /**
