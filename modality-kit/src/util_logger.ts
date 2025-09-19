@@ -112,7 +112,7 @@ export class ModalityLogger {
       }
       case "warn": {
         const { message, ...restPayload } = payload;
-        console.warn(payload);
+        console.warn(message);
         console.dir(restPayload, {
           depth: null,
           colors: true,
