@@ -1,5 +1,5 @@
 {
-  "version": "0.12.5",
+  "version": "0.12.6",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -11,16 +11,18 @@
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {
-    "@types/bun": "^1.2.19",
-    "fastmcp": "^3.12.0",
-    "typescript": "^5.8.3",
-    "zod": "3.x"
+    "@types/bun": "^1.2.22",
+    "typescript": "^5.9.2",
+    "zod": "^3.25.76"
   },
   "exports": {
+    "types": "./dist/types/index.d.ts",
     "require": "./dist/index.js",
-    "import": "./dist/index.js",
-    "types": "./dist/types/index.d.ts"
+    "import": "./dist/index.js"
   },
+  "types": "./dist/types/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "scripts": {
     "update-compile-sh": "yo reshow:compile-sh",
     "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
@@ -31,8 +33,5 @@
     "test": "bun test",
     "prepublishOnly": "npm run build && npm run test"
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/types/index.d.ts",
   "files": ["package.json", "README.md", "dist"]
 }
