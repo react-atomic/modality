@@ -22,8 +22,12 @@ export type { DataPendingOperation, PendingOperation } from "./util_pending";
  * JSON RPC related exports
  */
 export { JSONRPCUtils } from "./JSONRPCUtils";
-export { JSONRPCErrorCode } from "./schemas/jsonrpc";
 export { JSONRPCManager } from "./jsonrpc-manager";
+export { JSONRPCErrorCode } from "./schemas/jsonrpc";
+export type {
+  JSONRPCManagerEvents,
+  JSONRPCManagerConfig,
+} from "./jsonrpc-manager";
 export type {
   JSONRPCMessage,
   JSONRPCRequest,
@@ -38,10 +42,6 @@ export type {
   CommandExecuteParams,
   NotificationSendParams,
 } from "./schemas/jsonrpc";
-export type {
-  JSONRPCManagerEvents,
-  JSONRPCManagerConfig,
-} from "./jsonrpc-manager";
 
 /**
  * For test tool
