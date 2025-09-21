@@ -1,6 +1,9 @@
 export { setupAITools, ModalityFastMCP } from "./util_mcp_tools_converter";
-export type { FastMCPTool } from "./util_mcp_tools_converter";
-export type { AITools, AITool } from "./schemas/schemas_tool_config";
+export type {
+  AITools,
+  AITool,
+  FastMCPTool,
+} from "./schemas/schemas_tool_config";
 
 export { formatErrorResponse, formatSuccessResponse } from "./util_response";
 export { getLoggerInstance, type ModalityLogger } from "./util_logger";
@@ -40,7 +43,6 @@ export type {
 export { WebSocketClient } from "./websocket-client";
 
 export { LruCache } from "./lruCache";
-
 
 /**
  * For test tool
