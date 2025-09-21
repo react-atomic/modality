@@ -16,8 +16,8 @@ export interface McpSuccessResponse {
 
 export interface McpErrorResponse {
   success: boolean; // for supporting graceful error, possibly set to true
+  code?: string | number;
   error: string;
-  code?: string;
   operation?: string;
   reason?: string; // Optional detailed reason for the error
   meta?: Record<string, any>; // Optional metadata about the error
@@ -33,8 +33,8 @@ interface SuccessData extends Record<string, any> {
  */
 interface ErrorData extends Record<string, any> {
   success?: boolean; // for supporting graceful error, possibly set to true
+  code?: string | number;
   message: string;
-  code?: string;
   operation?: string;
 }
 

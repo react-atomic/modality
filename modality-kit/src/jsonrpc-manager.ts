@@ -228,7 +228,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
     try {
       const methodConfig = this.methods.get(notification.method);
       if (!methodConfig) {
-        throw new Error(
+        throw new ERROR_METHOD_NOT_FOUND(
           `Notification method '${notification.method}' not found`
         );
       }
