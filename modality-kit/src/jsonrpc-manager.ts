@@ -76,7 +76,7 @@ export interface JSONRPCManagerEvents<TContext> {
 
 const logger = getLoggerInstance("JSON-RPC-Manager");
 
-class ERROR_METHOD_NOT_FOUND extends ErrorCode {
+export class ERROR_METHOD_NOT_FOUND extends ErrorCode {
   readonly code = JSONRPCErrorCode.METHOD_NOT_FOUND;
 }
 
@@ -301,17 +301,20 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
       );
     }
 
-    return JSONRPCUtils.createError(
-      (error as any)?.code || JSONRPCErrorCode.INTERNAL_ERROR,
-      STANDARD_ERROR_MESSAGES[JSONRPCErrorCode.INTERNAL_ERROR],
-      { originalError: error.message }
-    );
+    const code: JSONRPCErrorCode =
+      (error as any)?.code || JSONRPCErrorCode.INTERNAL_ERROR;
+
+    const errorType = STANDARD_ERROR_MESSAGES[code];
+
+    return JSONRPCUtils.createError(code, error.message || errorType, {
+      errorType,
+    });
   }
 
   /**
    * Send a message (to be overridden by implementation)
    */
-  protected sendMessage(message: JSONRPCMessage, options: TContext): any {
+  protected sendMessage(message: JSONRPCMessage, options?: TContext): any {
     // This method should be overridden by the server integration
     console.warn(
       "JSONRPCManager.sendMessage not implemented - message not sent:"
@@ -415,12 +418,9 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
       }
     } catch (err) {
       const error = err as Error;
-      console.error("Error handling WebSocket message:", error);
+      console.error("Error handling validateMessage:", error);
       const errorResponse = JSONRPCUtils.createErrorResponse(
-        JSONRPCUtils.createError(
-          JSONRPCErrorCode.INTERNAL_ERROR,
-          "Internal error"
-        ),
+        this.config.errorHandler(error as Error),
         null
       );
       return this.sendMessage(errorResponse, options);

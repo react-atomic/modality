@@ -303,10 +303,10 @@ describe("JSONRPCManager", () => {
         expect(sendMessageSpy).toHaveBeenCalledTimes(1);
         const response = sendMessageSpy.mock.calls[0][0];
         expect(response.error.code).toBe(JSONRPCErrorCode.INTERNAL_ERROR);
-        expect(response.error.message).toBe(
+        expect(response.error.message).toBe("Test error");
+        expect(response.error.data.errorType).toBe(
           STANDARD_ERROR_MESSAGES[JSONRPCErrorCode.INTERNAL_ERROR]
         );
-        expect(response.error.data.originalError).toBe("Test error");
         expect(response.id).toBe(4);
       });
     });

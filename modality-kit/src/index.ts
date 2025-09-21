@@ -42,6 +42,7 @@ export type {
   CommandExecuteParams,
   NotificationSendParams,
 } from "./schemas/jsonrpc";
+export { ERROR_METHOD_NOT_FOUND } from "./jsonrpc-manager";
 
 /**
  * For test tool

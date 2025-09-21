@@ -4,9 +4,9 @@
     "": {
       "name": "modality-kit",
       "devDependencies": {
-        "@types/bun": "^1.2.19",
-        "typescript": "^5.8.3",
-        "zod": "3.x",
+        "@types/bun": "^1.2.22",
+        "typescript": "^5.9.2",
+        "zod": "^3.25.76",
       },
     },
   },
