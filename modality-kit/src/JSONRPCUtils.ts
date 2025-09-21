@@ -1,6 +1,6 @@
 /**
  * JSON-RPC 2.0 Utility Functions
- * 
+ *
  * Utility class for JSON-RPC message handling, validation, and creation.
  * Extracted from schemas/jsonrpc.ts for independent use.
  */
@@ -18,7 +18,7 @@ import {
   type JSONRPCResponse,
   type JSONRPCMessage,
   type JSONRPCValidationResult,
-} from './schemas/jsonrpc.js';
+} from "./schemas/jsonrpc.js";
 
 /**
  * Utility functions for JSON-RPC message handling
@@ -34,10 +34,10 @@ export class JSONRPCUtils {
         return {
           valid: false,
           message,
-          error: {
-            code: JSONRPCErrorCode.INVALID_REQUEST,
-            message: "Invalid request: batch array cannot be empty",
-          },
+          error: JSONRPCUtils.createError(
+            JSONRPCErrorCode.INVALID_REQUEST,
+            "Invalid request: batch array cannot be empty"
+          ),
         };
       }
 
@@ -67,10 +67,10 @@ export class JSONRPCUtils {
       return {
         valid: false,
         message,
-        error: {
-          code: JSONRPCErrorCode.INVALID_REQUEST,
-          message: "Invalid request: message must be an object",
-        },
+        error: JSONRPCUtils.createError(
+          JSONRPCErrorCode.INVALID_REQUEST,
+          "Invalid request: message must be an object"
+        ),
       };
     }
 
@@ -78,11 +78,10 @@ export class JSONRPCUtils {
       return {
         valid: false,
         message,
-        error: {
-          code: JSONRPCErrorCode.INVALID_REQUEST,
-          // refine message
-          message: `Invalid request: expect ${JSONRPC_VERSION}, received ${message.jsonrpc}`,
-        },
+        error: JSONRPCUtils.createError(
+          JSONRPCErrorCode.INVALID_REQUEST,
+          `Invalid request: expect ${JSONRPC_VERSION}, received ${message.jsonrpc}`
+        ),
       };
     }
 
@@ -99,10 +98,10 @@ export class JSONRPCUtils {
       return {
         valid: false,
         message,
-        error: {
-          code: JSONRPCErrorCode.INVALID_REQUEST,
-          message: "Invalid request: method must be a string",
-        },
+        error: JSONRPCUtils.createError(
+          JSONRPCErrorCode.INVALID_REQUEST,
+          `Invalid request: method must be a string`
+        ),
       };
     }
 
