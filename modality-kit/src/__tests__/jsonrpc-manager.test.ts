@@ -116,7 +116,7 @@ describe("JSONRPCManager", () => {
 
     it("should send a notification using sendNotification", () => {
       const context: TestContext = { userId: "user1" };
-      manager.sendNotification("test.notification", { baz: "qux" }, context);
+      (manager as any).sendNotification("test.notification", { baz: "qux" }, context);
       expect(sendMessageSpy).toHaveBeenCalledTimes(1);
       const sentMessage = sendMessageSpy.mock.calls[0][0];
       expect(sentMessage.method).toBe("test.notification");

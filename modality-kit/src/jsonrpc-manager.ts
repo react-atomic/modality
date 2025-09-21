@@ -8,10 +8,7 @@
 import { getLoggerInstance } from "./util_logger";
 import { JSONRPCCall } from "./util_pending";
 
-import {
-  JSONRPCErrorCode,
-  STANDARD_ERROR_MESSAGES,
-} from "./schemas/jsonrpc";
+import { JSONRPCErrorCode, STANDARD_ERROR_MESSAGES } from "./schemas/jsonrpc";
 import { JSONRPCUtils } from "./JSONRPCUtils";
 import type {
   JSONRPCValidationResult,
@@ -320,16 +317,15 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   protected sendMessage(message: JSONRPCMessage, options: TContext): void {
     // This method should be overridden by the WebSocket server integration
     console.warn(
-      "JSONRPCManager.sendMessage not implemented - message not sent:",
-      message,
-      options
+      "JSONRPCManager.sendMessage not implemented - message not sent:"
     );
+    console.dir({ message, options }, { depth: null, color: true });
   }
 
   /**
    * Send a JSON-RPC notification (no response expected)
    */
-  public sendNotification(
+  protected sendNotification(
     method: string,
     params: any,
     options: TContext
