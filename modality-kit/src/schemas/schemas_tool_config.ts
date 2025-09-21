@@ -61,7 +61,7 @@ export interface AITool<
   description?: string;
   execute: (
     args: ToolParameters.InferOutput<TParams>,
-    context: any
+    context?: any
   ) => Promise<any>;
   name: string;
   inputSchema?: TParams;
