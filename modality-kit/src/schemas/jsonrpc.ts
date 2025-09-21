@@ -115,7 +115,7 @@ export enum JSONRPCErrorCode {
  * This ensures strict JSON-RPC 2.0 compliance and wire protocol compatibility.
  * See: https://www.jsonrpc.org/specification#parameter_structures
  */
-export type JSONRPCParams = object | any[] | null;
+export type JSONRPCParams = Record<any, any> | any[] | null;
 
 /**
  * JSON-RPC 2.0 ID type - string, number, or null
@@ -183,7 +183,6 @@ export interface JSONRPCValidationResult {
   /** Parsed message type */
   messageType?: "request" | "notification" | "response" | "batch";
 }
-
 
 /**
  * Standard error messages for common JSON-RPC errors
