@@ -1,10 +1,10 @@
 /**
  * JSON-RPC Manager
  *
- * Clean JSON-RPC 2.0 implementation for WebSocket communication.
+ * Clean JSON-RPC 2.0 implementation for communication.
  * Provides method registration, routing, and lifecycle management.
  */
-
+import { ErrorCode } from "./util_error";
 import { getLoggerInstance } from "./util_logger";
 import { JSONRPCCall } from "./util_pending";
 
@@ -76,6 +76,10 @@ export interface JSONRPCManagerEvents<TContext> {
 
 const logger = getLoggerInstance("JSON-RPC-Manager");
 
+class ERROR_METHOD_NOT_FOUND extends ErrorCode {
+  readonly code = JSONRPCErrorCode.METHOD_NOT_FOUND;
+}
+
 /**
  * Central JSON-RPC Manager class
  */
@@ -118,11 +122,10 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
           );
 
         case "notification":
-          this.processNotification(
+          return this.processNotification(
             validation.message as JSONRPCNotification,
             options
           );
-          return; // Notifications don't return responses
 
         case "response":
           const response = validation.message as JSONRPCResponse;
@@ -130,8 +133,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
             response,
             response.id,
           ]);
-          this.handleResponse(response);
-          return; // Responses are handled internally
+          return this.handleResponse(response);
 
         case "batch":
           return await this.processBatchRequest(
@@ -174,16 +176,9 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
       // Check if method is registered
       const methodConfig = this.methods.get(request.method);
       if (!methodConfig) {
-        const error = JSONRPCUtils.createError(
-          JSONRPCErrorCode.METHOD_NOT_FOUND,
+        throw new ERROR_METHOD_NOT_FOUND(
           `Method '${request.method}' not found`
         );
-
-        if (this.eventHandlers.onMethodError) {
-          this.eventHandlers.onMethodError(request.method, error, context);
-        }
-
-        return JSONRPCUtils.createErrorResponse(error, request.id);
       }
 
       // Call event handler
@@ -233,8 +228,9 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
     try {
       const methodConfig = this.methods.get(notification.method);
       if (!methodConfig) {
-        console.warn(`Notification method '${notification.method}' not found`);
-        return;
+        throw new Error(
+          `Notification method '${notification.method}' not found`
+        );
       }
 
       if (this.eventHandlers.onMethodCall) {
@@ -245,12 +241,13 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
         );
       }
 
-      await methodConfig.handler(notification.params, context);
+      return await methodConfig.handler(notification.params, context);
     } catch (error) {
       console.error(
         `Error executing notification '${notification.method}':`,
         error
       );
+      throw error;
     }
   }
 
@@ -305,17 +302,17 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
     }
 
     return JSONRPCUtils.createError(
-      JSONRPCErrorCode.INTERNAL_ERROR,
+      (error as any)?.code || JSONRPCErrorCode.INTERNAL_ERROR,
       STANDARD_ERROR_MESSAGES[JSONRPCErrorCode.INTERNAL_ERROR],
       { originalError: error.message }
     );
   }
 
   /**
-   * Send a message (to be overridden by WebSocket implementation)
+   * Send a message (to be overridden by implementation)
    */
-  protected sendMessage(message: JSONRPCMessage, options: TContext): void {
-    // This method should be overridden by the WebSocket server integration
+  protected sendMessage(message: JSONRPCMessage, options: TContext): any {
+    // This method should be overridden by the server integration
     console.warn(
       "JSONRPCManager.sendMessage not implemented - message not sent:"
     );
@@ -331,7 +328,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
     options: TContext
   ): void {
     const notification = JSONRPCUtils.createNotification(method, params);
-    this.sendMessage(notification, options);
+    return this.sendMessage(notification, options);
   }
 
   /**
@@ -346,7 +343,6 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
     }
 
     this.methods.set(methodName, config);
-    console.log(`Registered JSON-RPC method: ${methodName}`);
   }
 
   /**
@@ -374,13 +370,11 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
     method: string,
     params?: any,
     options: any = {}
-  ): { promise: Promise<any>; request: JSONRPCRequest } {
+  ): { promise: Promise<any>; request: JSONRPCRequest; result: any } {
     const { promise, request } = super.handleRequest(method, params, options);
 
-    // Send the request (this should be handled by the WebSocket layer)
-    this.sendMessage(request, options);
-
-    return { promise, request };
+    const result = this.sendMessage(request, options);
+    return { promise, request, result };
   }
 
   /**
@@ -401,8 +395,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
           JSONRPCUtils.createError(JSONRPCErrorCode.PARSE_ERROR, "Parse error"),
           null
         );
-        this.sendMessage(errorResponse, options);
-        return;
+        return this.sendMessage(errorResponse, options);
       }
 
       // Process the message
@@ -412,14 +405,13 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
           validation.error!,
           (message as any).id || null
         );
-        this.sendMessage(errorResponse, options);
-        return;
+        return this.sendMessage(errorResponse, options);
       }
       const response = await this.processMessage(validation, options);
 
       // Send response if one was generated (requests only, not notifications)
       if (response && (!Array.isArray(response) || response.length > 0)) {
-        this.sendMessage(response, options);
+        return this.sendMessage(response, options);
       }
     } catch (err) {
       const error = err as Error;
@@ -431,7 +423,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
         ),
         null
       );
-      this.sendMessage(errorResponse, options);
+      return this.sendMessage(errorResponse, options);
     }
   }
 

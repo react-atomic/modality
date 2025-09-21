@@ -7,7 +7,7 @@ const logger = getLoggerInstance("Safe to Handle");
  * Base class for task-related errors
  */
 export abstract class ErrorCode extends Error {
-  abstract readonly code: string;
+  abstract readonly code: string | number;
   public cause?: Error;
   constructor(message: string, originalError?: unknown) {
     super(message);

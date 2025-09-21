@@ -73,29 +73,6 @@ export interface NotificationSendParams {
  */
 export const JSONRPC_VERSION = "2.0" as const;
 
-/**
- * Standard JSON-RPC 2.0 error codes as defined in the specification
- */
-export enum JSONRPCErrorCode {
-  // Standard errors
-  PARSE_ERROR = -32700,
-  INVALID_REQUEST = -32600,
-  METHOD_NOT_FOUND = -32601,
-  INVALID_PARAMS = -32602,
-  INTERNAL_ERROR = -32603,
-
-  // Implementation defined server errors (-32000 to -32099)
-  SERVER_ERROR_START = -32099,
-  SERVER_ERROR_END = -32000,
-
-  // Application specific errors (starting from -32000)
-  TIMEOUT_ERROR = -32001,
-  CONNECTION_ERROR = -32002,
-  AUTHENTICATION_ERROR = -32003,
-  AUTHORIZATION_ERROR = -32004,
-  RATE_LIMIT_ERROR = -32005,
-  VALIDATION_ERROR = -32006,
-}
 
 /**
  * JSON-RPC 2.0 parameter types - can be object, array, or null
@@ -182,6 +159,30 @@ export interface JSONRPCValidationResult {
   error?: JSONRPCError;
   /** Parsed message type */
   messageType?: "request" | "notification" | "response" | "batch";
+}
+
+/**
+ * Standard JSON-RPC 2.0 error codes as defined in the specification
+ */
+export enum JSONRPCErrorCode {
+  // Standard errors
+  PARSE_ERROR = -32700,
+  INVALID_REQUEST = -32600,
+  METHOD_NOT_FOUND = -32601,
+  INVALID_PARAMS = -32602,
+  INTERNAL_ERROR = -32603,
+
+  // Implementation defined server errors (-32000 to -32099)
+  SERVER_ERROR_START = -32099,
+  SERVER_ERROR_END = -32000,
+
+  // Application specific errors (starting from -32000)
+  TIMEOUT_ERROR = -32001,
+  CONNECTION_ERROR = -32002,
+  AUTHENTICATION_ERROR = -32003,
+  AUTHORIZATION_ERROR = -32004,
+  RATE_LIMIT_ERROR = -32005,
+  VALIDATION_ERROR = -32006,
 }
 
 /**
