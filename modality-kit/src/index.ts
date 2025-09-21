@@ -17,8 +17,13 @@ export { compressWithLanguageDetection as compressText } from "./util_text_compr
 
 export { JSONRPCCall, createDataPendingOperations } from "./util_pending";
 export type { DataPendingOperation, PendingOperation } from "./util_pending";
+
+/**
+ * JSON RPC related exports
+ */
 export { JSONRPCUtils } from "./JSONRPCUtils";
 export { JSONRPCErrorCode } from "./schemas/jsonrpc";
+export { JSONRPCManager } from "./jsonrpc-manager";
 export type {
   JSONRPCMessage,
   JSONRPCRequest,
@@ -33,18 +38,15 @@ export type {
   CommandExecuteParams,
   NotificationSendParams,
 } from "./schemas/jsonrpc";
-
-export { JSONRPCManager } from "./jsonrpc-manager";
 export type {
   JSONRPCManagerEvents,
   JSONRPCManagerConfig,
 } from "./jsonrpc-manager";
 
-export { WebSocketClient } from "./websocket-client";
-
-export { LruCache } from "./lruCache";
-
 /**
  * For test tool
  */
 export { isTestEnvironment } from "./util_tests/isTestEnvironment";
+
+export { WebSocketClient } from "./websocket-client";
+export { LruCache } from "./lruCache";
