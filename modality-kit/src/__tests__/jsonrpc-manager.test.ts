@@ -335,12 +335,9 @@ describe("JSONRPCManager", () => {
           "test.unregistered.notify"
         );
         await manager.validateMessage(JSON.stringify(notification), {});
-        // Changed from not.toHaveBeenCalled() to toHaveBeenCalled() because
-        // unregistered notifications currently throw errors which get caught
-        // and converted to error responses that are sent back.
-        // We need sendMessage for notifications to let the user know what actually happened
-        // when they send an unregistered notification method.
-        expect(sendMessageSpy).toHaveBeenCalled();
+        // When receiving input from outside for unregistered methods, it's OK to not handle it.
+        // Unregistered notifications should be silently ignored without sending responses.
+        expect(sendMessageSpy).not.toHaveBeenCalled();
       });
     });
 

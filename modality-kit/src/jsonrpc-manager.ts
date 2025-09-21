@@ -122,10 +122,11 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
           );
 
         case "notification":
-          return this.processNotification(
+          this.processNotification(
             validation.message as JSONRPCNotification,
             options
           );
+          break;
 
         case "response":
           const response = validation.message as JSONRPCResponse;
@@ -133,7 +134,8 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
             response,
             response.id,
           ]);
-          return this.handleResponse(response);
+          this.handleResponse(response);
+          break;
 
         case "batch":
           return await this.processBatchRequest(
@@ -229,7 +231,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
       const methodConfig = this.methods.get(notification.method);
       if (!methodConfig) {
         throw new ERROR_METHOD_NOT_FOUND(
-          `Notification method '${notification.method}' not found`
+          `Notification method '${notification.method}' not handled.`
         );
       }
 
@@ -243,11 +245,10 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
 
       return await methodConfig.handler(notification.params, context);
     } catch (error) {
-      console.error(
-        `Error executing notification '${notification.method}':`,
+      logger.info(
+        `Notification get exception: '${notification.method}':`,
         error
       );
-      throw error;
     }
   }
 
