@@ -9,6 +9,7 @@ import {
   type Mock,
 } from "bun:test";
 import { JSONRPCErrorCode, STANDARD_ERROR_MESSAGES } from "../schemas/jsonrpc";
+import type { JSONRPCMessage } from "../schemas/jsonrpc";
 import { JSONRPCUtils } from "../JSONRPCUtils";
 import type {
   JSONRPCManagerConfig,
@@ -101,6 +102,14 @@ class MockFactory {
   }
 }
 
+// Concrete test implementation of abstract JSONRPCManager
+class TestJSONRPCManager extends JSONRPCManager<TestContext> {
+  protected sendMessage(message: JSONRPCMessage, options?: TestContext): any {
+    // Mock implementation for testing
+    return Promise.resolve();
+  }
+}
+
 describe("JSONRPCManager", () => {
   let manager: JSONRPCManager<TestContext>;
   let sendMessageSpy: MockedSendMessage;
@@ -110,7 +119,7 @@ describe("JSONRPCManager", () => {
     config: JSONRPCManagerConfig<TestContext> = {},
     events: JSONRPCManagerEvents<TestContext> = {}
   ): JSONRPCManager<TestContext> => {
-    const newManager = new JSONRPCManager<TestContext>(config, events);
+    const newManager = new TestJSONRPCManager(config, events);
 
     // Create typed mock for sendMessage using factory
     sendMessageSpy = MockFactory.createSendMessageMock();

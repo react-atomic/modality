@@ -8,8 +8,8 @@ import { ErrorCode } from "./util_error";
 import { getLoggerInstance } from "./util_logger";
 import { JSONRPCCall } from "./util_pending";
 
-import { JSONRPCErrorCode, STANDARD_ERROR_MESSAGES } from "./schemas/jsonrpc";
 import { JSONRPCUtils } from "./JSONRPCUtils";
+import { JSONRPCErrorCode, STANDARD_ERROR_MESSAGES } from "./schemas/jsonrpc";
 import type {
   JSONRPCValidationResult,
   JSONRPCRequest,
@@ -79,11 +79,14 @@ const logger = getLoggerInstance("JSON-RPC-Manager");
 export class ERROR_METHOD_NOT_FOUND extends ErrorCode {
   readonly code = JSONRPCErrorCode.METHOD_NOT_FOUND;
 }
+class ERROR_PARSE_ERROR extends ErrorCode {
+  readonly code = JSONRPCErrorCode.PARSE_ERROR;
+}
 
 /**
  * Central JSON-RPC Manager class
  */
-export class JSONRPCManager<TContext> extends JSONRPCCall {
+export abstract class JSONRPCManager<TContext> extends JSONRPCCall {
   private methods = new Map<string, JSONRPCMethodConfig<TContext, any>>();
   private config: Required<JSONRPCManagerConfig<TContext>>;
   private eventHandlers: JSONRPCManagerEvents<TContext>;
@@ -116,7 +119,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
 
       switch (validation.messageType) {
         case "request":
-          return await this.processRequest(
+          return await this.processMethod(
             validation.message as JSONRPCRequest,
             options
           );
@@ -153,7 +156,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
           );
       }
     } catch (error) {
-      console.error("Error processing JSON-RPC message:", error);
+      logger.error("Error processing JSON-RPC message:", error);
       return JSONRPCUtils.createErrorResponse(
         this.config.errorHandler(error as Error),
         (validation.message as any).id || null
@@ -164,7 +167,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   /**
    * Process a JSON-RPC request
    */
-  private async processRequest(
+  private async processMethod(
     request: JSONRPCRequest,
     options: any = {}
   ): Promise<JSONRPCResponse> {
@@ -202,7 +205,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
 
       return JSONRPCUtils.createSuccessResponse(result, request.id);
     } catch (error) {
-      console.error(`Error executing method '${request.method}':`, error);
+      logger.error(`Error executing method '${request.method}':`, error);
 
       const jsonrpcError = this.config.errorHandler(error as Error, context);
 
@@ -270,7 +273,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
 
     const promises = batchRequest.map((item) => {
       if (JSONRPCUtils.isRequest(item)) {
-        return this.processRequest(item, options);
+        return this.processMethod(item, options);
       } else if (JSONRPCUtils.isNotification(item)) {
         return this.processNotification(item, options);
       }
@@ -315,13 +318,10 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   /**
    * Send a message (to be overridden by implementation)
    */
-  protected sendMessage(message: JSONRPCMessage, options?: TContext): any {
-    // This method should be overridden by the server integration
-    console.warn(
-      "JSONRPCManager.sendMessage not implemented - message not sent:"
-    );
-    console.dir({ message, options }, { depth: null, color: true });
-  }
+  protected abstract sendMessage(
+    message: JSONRPCMessage,
+    options?: TContext
+  ): any;
 
   /**
    * Send a JSON-RPC notification (no response expected)
@@ -355,7 +355,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
   public unregisterMethod(methodName: string): boolean {
     const removed = this.methods.delete(methodName);
     if (removed) {
-      console.log(`Unregistered JSON-RPC method: ${methodName}`);
+      logger.info(`Unregistered JSON-RPC method: ${methodName}`);
     }
     return removed;
   }
@@ -385,21 +385,15 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
    * Process incoming WebSocket message
    */
   public async validateMessage(
-    data: string | Buffer,
+    data: string | Buffer | Record<string, any>,
     options: any = {}
   ): Promise<void> {
     try {
       // Parse message
-      const messageStr = typeof data === "string" ? data : data.toString();
-      const message = JSONRPCUtils.deserialize(messageStr);
+      const message = JSONRPCUtils.deserialize(data);
 
       if (!message) {
-        console.error("Failed to parse JSON-RPC message:", messageStr);
-        const errorResponse = JSONRPCUtils.createErrorResponse(
-          JSONRPCUtils.createError(JSONRPCErrorCode.PARSE_ERROR, "Parse error"),
-          null
-        );
-        return this.sendMessage(errorResponse, options);
+        throw new ERROR_PARSE_ERROR("Failed to parse JSON-RPC message");
       }
 
       // Process the message
@@ -419,7 +413,7 @@ export class JSONRPCManager<TContext> extends JSONRPCCall {
       }
     } catch (err) {
       const error = err as Error;
-      console.error("Error handling validateMessage:", error);
+      logger.error("Error handling validateMessage:", error);
       const errorResponse = JSONRPCUtils.createErrorResponse(
         this.config.errorHandler(error as Error),
         null

@@ -256,9 +256,21 @@ export class JSONRPCUtils {
   /**
    * Deserialize a JSON-RPC message from string
    */
-  static deserialize(data: string): JSONRPCMessage | null {
+  static deserialize(
+    data: string | Buffer | Record<string, any>
+  ): JSONRPCMessage | null {
     try {
-      return JSON.parse(data);
+      let messageStr: string;
+      if (typeof data !== "string") {
+        if (Buffer.isBuffer(data)) {
+          messageStr = data.toString();
+        } else {
+          return data as JSONRPCMessage;
+        }
+      } else {
+        messageStr = data;
+      }
+      return JSON.parse(messageStr);
     } catch {
       return null;
     }
