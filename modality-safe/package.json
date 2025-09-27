@@ -1,0 +1,37 @@
+{
+  "version": "0.0.1",
+  "name": "modality-safe",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/react-atomic/modality"
+  },
+  "homepage": "https://github.com/react-atomic/modality/tree/main/modality-security",
+  "description": "",
+  "keywords": ["api", "safe"],
+  "author": "Hill <hill@kimo.com>",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/bun": "^1.2.22",
+    "typescript": "^5.9.2",
+    "zod": "^3.25.76"
+  },
+  "exports": {
+    "types": "./dist/types/index.d.ts",
+    "require": "./dist/index.js",
+    "import": "./dist/index.js"
+  },
+  "types": "./dist/types/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "scripts": {
+    "update-compile-sh": "yo reshow:compile-sh",
+    "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
+    "build:types": "bun tsc -p ./",
+    "build:src": "bun build src/index.ts --outdir dist",
+    "build": "bun run build:clean && bun run build:types && bun run build:src",
+    "dev": "bunx concurrently 'bun --watch tsc  -p ./' 'bun build:src -- --watch --sourcemap=inline'",
+    "test": "bun test",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "files": ["package.json", "README.md", "dist"]
+}
