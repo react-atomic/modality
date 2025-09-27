@@ -1,8 +1,8 @@
-import { describe, it, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { detectAPIKeyLeaks } from "../index";
 
 describe("GitHub API key detection", () => {
-  it("should detect GitHub Personal Access Tokens", () => {
+  test("should detect GitHub Personal Access Tokens", () => {
     const content = 'GITHUB_TOKEN=ghp_1234567890abcdef1234567890abcdef123456';
     const result = detectAPIKeyLeaks(content);
     
@@ -10,7 +10,7 @@ describe("GitHub API key detection", () => {
     expect(result.some(r => r.match.startsWith("ghp_"))).toBe(true);
   });
 
-  it("should detect GitHub Personal Access Tokens in different formats", () => {
+  test("should detect GitHub Personal Access Tokens in different formats", () => {
     const testCases = [
       'export GITHUB_TOKEN="ghp_abcdefghijklmnopqrstuvwxyz1234567890"',
       'const githubToken = `ghp_1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r`;',
@@ -18,14 +18,14 @@ describe("GitHub API key detection", () => {
       'curl -H "Authorization: token ghp_zyxwvutsrqponmlkjihgfedcba0987654321"'
     ];
 
-    testCases.forEach((content, index) => {
+    testCases.forEach((content) => {
       const result = detectAPIKeyLeaks(content);
       expect(result.length).toBeGreaterThan(0);
       expect(result.some(r => r.match.startsWith("ghp_"))).toBe(true);
     });
   });
 
-  it("should detect GitHub App tokens", () => {
+  test("should detect GitHub App tokens", () => {
     // GitHub App Installation tokens also follow similar patterns
     const content = 'GITHUB_APP_TOKEN=ghs_1234567890abcdefghijklmnopqrstuvwxyz12';
     const result = detectAPIKeyLeaks(content);
@@ -36,7 +36,7 @@ describe("GitHub API key detection", () => {
     }
   });
 
-  it("should not detect invalid GitHub token patterns", () => {
+  test("should not detect invalid GitHub token patterns", () => {
     const invalidPatterns = [
       'const token = "ghp_";', // Too short
       'const token = "ghp-invalid-format";', // Wrong separator
@@ -57,7 +57,7 @@ describe("GitHub API key detection", () => {
     });
   });
 
-  it("should handle multiple GitHub tokens in same content", () => {
+  test("should handle multiple GitHub tokens in same content", () => {
     const content = `
       const token1 = "ghp_1234567890abcdefghijklmnopqrstuvwxyz12";
       const token2 = "ghp_abcdefghijklmnopqrstuvwxyz1234567890";

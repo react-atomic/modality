@@ -30,7 +30,7 @@ const API_KEY_PATTERNS = [
 
 // Known safe patterns that might match but are not real API keys
 // These patterns help distinguish between real API keys and documentation examples
-const SAFE_PATTERNS = [
+const WHITE_LIST_PATTERNS = [
   // Documentation examples and placeholders
   /your[_-]?api[_-]?key/gi, // Example: "your-api-key", "your_api_key"
   /your[_-]?actual[_-]?api[_-]?key/gi, // Example: "your-actual-api-key"
@@ -121,8 +121,17 @@ function isSafePattern(
   }
 
   // Check against regular safe patterns
-  return SAFE_PATTERNS.some((pattern) => pattern.test(text));
+  return WHITE_LIST_PATTERNS.some((pattern) => pattern.test(text));
 }
+
+export const getSafePattern = () => {
+  return {
+    API_KEY_PATTERNS,
+    WHITE_LIST_PATTERNS,
+    EXCLUDE_PATTERNS,
+    SCANNED_FILE_EXTENSIONS,
+  };
+};
 
 /**
  * Security Validation Tests

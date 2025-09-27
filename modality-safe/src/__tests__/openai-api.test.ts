@@ -1,8 +1,8 @@
-import { describe, it, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { detectAPIKeyLeaks } from "../index";
 
 describe("OpenAI API key detection", () => {
-  it("should detect OpenAI API keys", () => {
+  test("should detect OpenAI API keys", () => {
     const content = 'const key = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678901234";';
     const result = detectAPIKeyLeaks(content);
     
@@ -10,7 +10,7 @@ describe("OpenAI API key detection", () => {
     expect(result.some(r => r.match.startsWith("sk-"))).toBe(true);
   });
 
-  it("should detect OpenAI API keys in different formats", () => {
+  test("should detect OpenAI API keys in different formats", () => {
     const testCases = [
       'OPENAI_API_KEY="sk-1234567890abcdef1234567890abcdef1234567890abcdef"',
       'const openaiKey = `sk-abcdefghijklmnopqrstuvwxyz1234567890123456789012`;',
@@ -24,7 +24,7 @@ describe("OpenAI API key detection", () => {
     });
   });
 
-  it("should not detect invalid OpenAI key patterns", () => {
+  test("should not detect invalid OpenAI key patterns", () => {
     const invalidPatterns = [
       'const key = "sk-";', // Too short
       'const key = "sk-invalid-key";', // Wrong format

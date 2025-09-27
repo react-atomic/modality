@@ -1,9 +1,9 @@
-import { describe, it, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { detectAPIKeyLeaks } from "../index";
 
 describe("JWT Token Detection", () => {
   // Test JWT token pattern: eyJ[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+
-  it("should detect JWT tokens", () => {
+  test("should detect JWT tokens", () => {
     const content = 'token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"';
     const result = detectAPIKeyLeaks(content);
 
