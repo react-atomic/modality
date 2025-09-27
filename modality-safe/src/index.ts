@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 
-interface LeakData {
+export interface LeakData {
   line: number;
   match: string;
   pattern: string;
@@ -137,7 +137,9 @@ function isSafePattern(
  * @param {string} whitelistPath - Path to the whitelist file
  * @returns {Promise<Set<string>>} Set of whitelisted items
  */
-const loadCustomWhitelist = async (whitelistPath: string): Promise<Set<string>> => {
+const loadCustomWhitelist = async (
+  whitelistPath: string
+): Promise<Set<string>> => {
   try {
     const content = await readFile(whitelistPath, "utf8");
     const lines = content.split("\n").filter((line) => line.trim() !== "");
