@@ -1,5 +1,5 @@
 {
-  "version": "0.0.2",
+  "version": "0.0.3",
   "name": "modality-safe",
   "repository": {
     "type": "git",
@@ -7,7 +7,22 @@
   },
   "homepage": "https://github.com/react-atomic/modality/tree/main/modality-security",
   "description": "Advanced security scanner that detects API key leaks and sensitive information in source code. Scans TypeScript, JavaScript, Markdown, and configuration files for AWS keys, OpenAI tokens, GitHub/GitLab PATs, Slack/Discord tokens, JWT tokens, and other credentials with intelligent whitelist filtering to reduce false positives.",
-  "keywords": ["api", "safe"],
+  "keywords": [
+    "security",
+    "api-key",
+    "credential-scanner",
+    "leak-detection",
+    "secret-detection",
+    "security-audit",
+    "vulnerability-scanner",
+    "code-security",
+    "aws-keys",
+    "jwt-tokens",
+    "github-tokens",
+    "openai-keys",
+    "static-analysis",
+    "devsecops"
+  ],
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {

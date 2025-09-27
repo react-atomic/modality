@@ -1,5 +1,13 @@
-import { readdir } from "fs/promises";
+import { readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
+
+interface LeakData {
+  line: number;
+  match: string;
+  pattern: string;
+  filePath: string;
+  key: string;
+}
 
 // Common API key patterns to detect
 const API_KEY_PATTERNS = [
@@ -124,13 +132,61 @@ function isSafePattern(
   return WHITE_LIST_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export const getSafePattern = () => {
-  return {
-    API_KEY_PATTERNS,
-    WHITE_LIST_PATTERNS,
-    EXCLUDE_PATTERNS,
-    SCANNED_FILE_EXTENSIONS,
-  };
+/**
+ * Load custom whitelist from file
+ * @param {string} whitelistPath - Path to the whitelist file
+ * @returns {Promise<Set<string>>} Set of whitelisted items
+ */
+const loadCustomWhitelist = async (whitelistPath: string): Promise<Set<string>> => {
+  try {
+    const content = await readFile(whitelistPath, "utf8");
+    const lines = content.split("\n").filter((line) => line.trim() !== "");
+    return new Set(lines);
+  } catch {
+    return new Set();
+  }
+};
+
+/**
+ * Save custom whitelist to file
+ * @param {string} whitelistPath - Path to save the whitelist file
+ * @param {Set<string>} whitelist - Set of items to save
+ */
+const saveCustomWhitelist = async (
+  whitelistPath: string,
+  whitelist: Set<string>
+): Promise<void> => {
+  const sortedList = Array.from(whitelist).sort();
+  await writeFile(whitelistPath, sortedList.join("\n") + "\n", "utf8");
+};
+
+/**
+ * Check if an item is in the custom whitelist
+ * @param {string} item - Item to check
+ * @param {Set<string>} whitelist - Whitelist set
+ * @returns {boolean} True if item is whitelisted
+ */
+const isCustomWhitelisted = (item: string, whitelist: Set<string>): boolean => {
+  return whitelist.has(item);
+};
+
+/**
+ * Add detected leaks to whitelist Set
+ * @param {Set<string>} whitelist - Existing whitelist Set
+ * @param {Array<{key?: string, match: string}>} leaks - Array of detected leaks
+ * @returns {number} Number of new items added
+ */
+const addLeaksToWhitelist = (
+  whitelist: Set<string>,
+  leaks: LeakData[]
+): number => {
+  const initialSize = whitelist.size;
+  leaks.forEach((leak) => {
+    // Use key if available (file-based), otherwise use match (content-based)
+    const entryToAdd = leak.key || leak.match;
+    whitelist.add(entryToAdd);
+  });
+  return whitelist.size - initialSize;
 };
 
 /**
@@ -139,7 +195,7 @@ export const getSafePattern = () => {
  * This test suite ensures that no sensitive information is hardcoded in the source code.
  * It scans all TypeScript files for potential security issues including API keys and secrets.
  */
-export async function getAllSourceFiles(dir: string): Promise<string[]> {
+async function getAllSourceFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
 
   async function scanDirectory(currentDir: string) {
@@ -169,6 +225,15 @@ export async function getAllSourceFiles(dir: string): Promise<string[]> {
   return files;
 }
 
+export const getSafePattern = () => {
+  return {
+    API_KEY_PATTERNS,
+    WHITE_LIST_PATTERNS,
+    EXCLUDE_PATTERNS,
+    SCANNED_FILE_EXTENSIONS,
+  };
+};
+
 export function detectAPIKeyLeaks(
   content: string
 ): Array<{ line: number; match: string; pattern: string }> {
@@ -196,4 +261,59 @@ export function detectAPIKeyLeaks(
   }
 
   return leaks;
+}
+
+export async function detectAPIKeyLeaksWithFiles(
+  directory: string,
+  customWhitelistPath?: string,
+  updateWhitelist?: boolean
+): Promise<LeakData[]> {
+  // Get all source files using existing function
+  const files = await getAllSourceFiles(directory);
+
+  // Load custom whitelist if path provided
+  // customWhitelist contains entries like: "src/config.ts:sk-1234567890..." or "docs/api.md:AIzaExample123"
+  const customWhitelist = customWhitelistPath
+    ? await loadCustomWhitelist(customWhitelistPath)
+    : new Set<string>();
+
+  const allLeaks: LeakData[] = [];
+
+  for (const filePath of files) {
+    try {
+      // Read content from file
+      const content = await readFile(filePath, "utf8");
+
+      // Get basic leaks without whitelist filtering (we'll do file-based filtering)
+      const basicLeaks = detectAPIKeyLeaks(content);
+
+      // Transform basic leaks to include file info and check against file-based whitelist
+      const leaksWithFile = basicLeaks
+        .map((leak) => {
+          const key = `${filePath}:${leak.match}`;
+          return {
+            ...leak,
+            filePath,
+            key,
+          };
+        })
+        .filter((leak) => !isCustomWhitelisted(leak.key, customWhitelist));
+
+      allLeaks.push(...leaksWithFile);
+    } catch (error) {
+      // Skip files that can't be read
+      throw new Error(`Could not read file ${filePath}: ${error}`);
+    }
+  }
+
+  // Update whitelist if requested and path provided
+  if (updateWhitelist && customWhitelistPath && allLeaks.length > 0) {
+    const newItemsAdded = addLeaksToWhitelist(customWhitelist, allLeaks);
+    await saveCustomWhitelist(customWhitelistPath, customWhitelist);
+    console.log(
+      `Added ${newItemsAdded} new API key leaks to whitelist: ${customWhitelistPath}`
+    );
+  }
+
+  return allLeaks;
 }
