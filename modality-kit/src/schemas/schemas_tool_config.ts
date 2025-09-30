@@ -1,6 +1,8 @@
 /**
  * Copy of StandardSchemaV1 interface for compatibility
  */
+import { z } from "zod";
+
 export interface ToolParameters<Input = unknown, Output = Input> {
   readonly "~standard": ToolParameters.Props<Input, Output>;
 }
@@ -46,8 +48,8 @@ export namespace ToolParameters {
  */
 export interface AITool<
   T extends Record<string, unknown> | undefined = any,
-  TParams extends ToolParameters = ToolParameters,
->{
+  TParams extends ToolParameters = z.ZodSchema,
+> {
   annotations?: {
     streamingHint?: boolean;
   } & {
@@ -71,7 +73,7 @@ export interface AITool<
 export interface FastMCPTool<
   T extends Record<string, unknown> | undefined = any,
   TParams extends ToolParameters = ToolParameters,
-> extends AITool<T, TParams> { 
+> extends AITool<T, TParams> {
   parameters?: TParams;
   name: string;
 }
@@ -81,6 +83,8 @@ export interface FastMCPTool<
  * @template T - Record mapping tool names to their inputSchema types
  * @example AITools<{getUserById: z.object({id: z.string()}), createUser: z.object({name: z.string()})}>
  */
-export type AITools<T extends Record<string, ToolParameters> = Record<string, ToolParameters>> = {
+export type AITools<
+  T extends Record<string, ToolParameters> = Record<string, z.ZodSchema>,
+> = {
   [K in keyof T]: AITool<any, T[K]>;
 };
