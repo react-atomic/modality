@@ -63,7 +63,7 @@ export interface AITool<
     args: ToolParameters.InferOutput<TParams>,
     context?: any
   ) => Promise<any>;
-  name: string;
+  name?: string;
   inputSchema?: TParams;
   timeoutMs?: number;
 }
@@ -73,6 +73,7 @@ export interface FastMCPTool<
   TParams extends ToolParameters = ToolParameters,
 > extends AITool<T, TParams> { 
   parameters?: TParams;
+  name: string;
 }
 
 /**

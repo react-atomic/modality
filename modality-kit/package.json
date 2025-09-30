@@ -1,5 +1,5 @@
 {
-  "version": "0.12.15",
+  "version": "0.12.16",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -11,7 +11,7 @@
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {
-    "@types/bun": "^1.2.22",
+    "@types/bun": "^1.2.23",
     "typescript": "^5.9.2",
     "zod": "^3.25.76"
   },
