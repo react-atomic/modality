@@ -25,7 +25,7 @@ export interface McpErrorResponse {
 
 interface SuccessData extends Record<string, any> {
   message?: string;
-  instructions?: string|string[];
+  instructions?: string | string[];
 }
 
 /**
@@ -49,7 +49,7 @@ export function formatSuccessResponse(
   return JSON.stringify({
     success: true,
     instructions,
-    content: restContent,
+    content: Object.keys(restContent || {}).length ? restContent : undefined,
     meta,
   } as McpSuccessResponse);
 }
