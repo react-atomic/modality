@@ -1,0 +1,48 @@
+{
+  "version": "0.0.2",
+  "name": "modality-mcp-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/react-atomic/modality"
+  },
+  "homepage": "https://github.com/react-atomic/modality/tree/main/modality-mcp-kit",
+  "description": "Modality MCP Kit - Schema conversion utilities for MCP tool development with multi-library support",
+  "keywords": [
+    "mcp",
+    "mcp-toolkit",
+    "mcp-tools",
+    "model-context-protocol",
+    "json-schema",
+    "xsschema",
+    "schema-conversion",
+    "tool-parameters",
+    "zod",
+    "typescript"
+  ],
+  "author": "Hill <hill@kimo.com>",
+  "license": "ISC",
+  "dependencies": {
+    "xsschema": "0.3.5",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.22",
+    "typescript": "^5.9.2"
+  },
+  "exports": {
+    "types": "./dist/types/index.d.ts",
+    "require": "./dist/index.js",
+    "import": "./dist/index.js"
+  },
+  "types": "./dist/types/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "scripts": {
+    "build": "bun tsc -p ./",
+    "build:types": "echo 'Starting build validation...' && bun --version && echo 'Running TypeScript type checking...' && bun tsc --noEmit --strict && echo '✅ Build validation successful - no TypeScript errors found' || (echo '❌ Build failed' && exit 1)",
+    "test": "bun test",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "files": ["package.json", "README.md", "dist"]
+}

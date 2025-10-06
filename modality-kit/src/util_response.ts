@@ -46,10 +46,11 @@ export function formatSuccessResponse(
   meta?: any
 ): string {
   const { instructions, ...restContent } = content; // Destructure to ensure content is an object
+  const otherContent = JSON.parse(JSON.stringify(restContent || {})); // Deep clone to clean data
   return JSON.stringify({
     success: true,
     instructions,
-    content: Object.keys(restContent || {}).length ? restContent : undefined,
+    content: Object.keys(otherContent || {}).length ? otherContent : undefined,
     meta,
   } as McpSuccessResponse);
 }
