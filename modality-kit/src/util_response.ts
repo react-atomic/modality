@@ -25,7 +25,7 @@ export interface McpErrorResponse {
 
 interface SuccessData extends Record<string, any> {
   message?: string;
-  instructions?: string | string[];
+  instructions?: string | any[];
 }
 
 /**
