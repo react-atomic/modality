@@ -1,4 +1,3 @@
-import { readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 
 export interface LeakData {
@@ -84,8 +83,8 @@ const SCANNED_FILE_EXTENSIONS = [
   ".tsx",
   ".js", // JavaScript files
   ".jsx",
-  "mjs",
-  "cjs",
+  ".mjs",
+  ".cjs",
   ".md", // Markdown documentation
   ".mdx", // MDX documentation with React components
   ".txt", // Text files
@@ -133,6 +132,28 @@ function isSafePattern(
 }
 
 /**
+ * Load ignore patterns from file (like .gitignore format)
+ * @param {string} ignoreFilePath - Path to the ignore file
+ * @returns {Promise<string[]>} Array of ignore patterns
+ */
+const loadIgnoreFile = async (ignoreFilePath: string): Promise<string[]> => {
+  try {
+    const { readFile } = await import("fs/promises");
+    const content = await readFile(ignoreFilePath, "utf8");
+    const patterns = content
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(
+        (line) =>
+          line !== "" && !line.startsWith("#") && !line.startsWith("//")
+      );
+    return patterns;
+  } catch {
+    return [];
+  }
+};
+
+/**
  * Load custom whitelist from file
  * @param {string} whitelistPath - Path to the whitelist file
  * @returns {Promise<Set<string>>} Set of whitelisted items
@@ -141,6 +162,7 @@ const loadCustomWhitelist = async (
   whitelistPath: string
 ): Promise<Set<string>> => {
   try {
+    const { readFile } = await import("fs/promises");
     const content = await readFile(whitelistPath, "utf8");
     const lines = content.split("\n").filter((line) => line.trim() !== "");
     return new Set(lines);
@@ -158,6 +180,7 @@ const saveCustomWhitelist = async (
   whitelistPath: string,
   whitelist: Set<string>
 ): Promise<void> => {
+  const { writeFile } = await import("fs/promises");
   const sortedList = Array.from(whitelist).sort();
   await writeFile(whitelistPath, sortedList.join("\n") + "\n", "utf8");
 };
@@ -197,8 +220,20 @@ const addLeaksToWhitelist = (
  * This test suite ensures that no sensitive information is hardcoded in the source code.
  * It scans all TypeScript files for potential security issues including API keys and secrets.
  */
-async function getAllSourceFiles(dir: string): Promise<string[]> {
+async function getAllSourceFiles(
+  dir: string,
+  ignoreFilePath?: string
+): Promise<string[]> {
+  const { readdir } = await import("fs/promises");
   const files: string[] = [];
+
+  // Load ignore patterns from file if provided
+  const ignorePatterns = ignoreFilePath
+    ? await loadIgnoreFile(ignoreFilePath)
+    : [];
+
+  // Combine default exclude patterns with loaded ignore patterns
+  const allExcludePatterns = [...EXCLUDE_PATTERNS, ...ignorePatterns];
 
   async function scanDirectory(currentDir: string) {
     const entries = await readdir(currentDir, { withFileTypes: true });
@@ -208,7 +243,9 @@ async function getAllSourceFiles(dir: string): Promise<string[]> {
       const relativePath = fullPath.replace(process.cwd() + "/", "");
 
       // Skip excluded paths
-      if (EXCLUDE_PATTERNS.some((pattern) => relativePath.includes(pattern))) {
+      if (
+        allExcludePatterns.some((pattern) => relativePath.includes(pattern))
+      ) {
         continue;
       }
 
@@ -267,11 +304,17 @@ export function detectAPIKeyLeaks(
 
 export async function detectAPIKeyLeaksWithFiles(
   directory: string,
+  ignoreFilePath?: string,
   customWhitelistPath?: string,
   updateWhitelist?: boolean
 ): Promise<LeakData[]> {
-  // Get all source files using existing function
-  const files = await getAllSourceFiles(directory);
+  const { readFile } = await import("fs/promises");
+
+  // Get all source files using existing function, passing ignore file path
+  if (null == ignoreFilePath) {
+    ignoreFilePath = `${directory}/.gitignore`;
+  }
+  const files = await getAllSourceFiles(directory, ignoreFilePath);
 
   // Load custom whitelist if path provided
   // customWhitelist contains entries like: "src/config.ts:sk-1234567890..." or "docs/api.md:AIzaExample123"
