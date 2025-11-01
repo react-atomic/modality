@@ -73,7 +73,6 @@ const EXCLUDE_PATTERNS = [
   ".git",
   "coverage",
   "bun.lockb",
-  "/proc",
   // REMINDER: Do not add documentation files here! They must be scanned for security.
 ];
 
