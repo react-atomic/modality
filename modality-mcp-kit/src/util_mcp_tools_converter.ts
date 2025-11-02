@@ -10,6 +10,7 @@ import type {
  */
 export interface FastMCPCompatible {
   addTool<Params extends ToolParameters>(tool: FastMCPTool<any, Params>): void;
+  getTools?(): FastMCPTool<any, any>[];
 }
 
 /**

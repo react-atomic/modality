@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { ModalityFastMCP, setupAITools } from "./util_mcp_tools_converter";
-import type { AITools, FastMCPTool } from "./schemas/schemas_tool_config";
+import { ModalityFastMCP, setupAITools } from "../util_mcp_tools_converter";
+import type { AITools, FastMCPTool } from "../schemas/schemas_tool_config";
 
 describe("ModalityFastMCP", () => {
   test("should add and retrieve tools", () => {
