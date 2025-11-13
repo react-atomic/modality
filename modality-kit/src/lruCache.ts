@@ -36,4 +36,8 @@ export class LruCache<T> {
     }
     this.values.set(key, value);
   }
+
+  public delete(key: string): boolean {
+    return this.values.delete(key);
+  }
 }
