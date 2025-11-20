@@ -1,5 +1,5 @@
 export class LruCache<T> {
-  private values: Map<string, T> = new Map<string, T>();
+  private _values: Map<string, T> = new Map<string, T>();
   private max: number;
 
   constructor(max = 100) {
@@ -7,15 +7,15 @@ export class LruCache<T> {
   }
 
   public has(key: string): boolean {
-    return this.values.has(key);
+    return this._values.has(key);
   }
 
   public get(key: string): T | undefined {
-    const value = this.values.get(key);
+    const value = this._values.get(key);
     if (value) {
       // move to end of map
-      this.values.delete(key);
-      this.values.set(key, value);
+      this._values.delete(key);
+      this._values.set(key, value);
     }
     return value;
   }
@@ -23,29 +23,33 @@ export class LruCache<T> {
   public set(key: string, value: T): void {
     if (this.size() >= this.max) {
       const itemsToEvictCount = Math.max(1, Math.floor(this.max * 0.25));
-      const keys = this.values.keys();
+      const keys = this._values.keys();
       let count = 0;
       while (count < itemsToEvictCount) {
         const next = keys.next();
         if (next.done) {
           break;
         }
-        this.values.delete(next.value);
+        this._values.delete(next.value);
         count++;
       }
     }
-    this.values.set(key, value);
+    this._values.set(key, value);
   }
 
   public delete(key: string): boolean {
-    return this.values.delete(key);
+    return this._values.delete(key);
   }
 
   public clear(): void {
-    this.values.clear();
+    this._values.clear();
   }
 
   public size(): number {
-    return this.values.size;
+    return this._values.size;
+  }
+
+  public values(): IterableIterator<T> {
+    return this._values.values();
   }
 }
