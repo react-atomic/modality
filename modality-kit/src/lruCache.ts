@@ -21,7 +21,7 @@ export class LruCache<T> {
   }
 
   public set(key: string, value: T): void {
-    if (this.values.size >= this.max) {
+    if (this.size() >= this.max) {
       const itemsToEvictCount = Math.max(1, Math.floor(this.max * 0.25));
       const keys = this.values.keys();
       let count = 0;
@@ -39,5 +39,13 @@ export class LruCache<T> {
 
   public delete(key: string): boolean {
     return this.values.delete(key);
+  }
+
+  public clear(): void {
+    this.values.clear();
+  }
+
+  public size(): number {
+    return this.values.size;
   }
 }
