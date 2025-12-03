@@ -45,8 +45,14 @@ export function formatSuccessResponse(
   content: SuccessData,
   meta?: any
 ): string {
-  const { instructions, ...restContent } = content; // Destructure to ensure content is an object
-  const otherContent = JSON.parse(JSON.stringify(restContent || {})); // Deep clone to clean data
+  let otherContent;
+  const instructions = content.instructions;
+  if (null != instructions) {
+    const { instructions, ...restContent } = content; // Destructure to ensure content is an object
+    otherContent = JSON.parse(JSON.stringify(restContent || {})); // Deep clone to clean data
+  } else {
+    otherContent = JSON.parse(JSON.stringify(content || {})); // Deep clone to clean data
+  }
   return JSON.stringify({
     success: true,
     instructions,

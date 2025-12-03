@@ -52,4 +52,8 @@ export class LruCache<T> {
   public values(): IterableIterator<T> {
     return this._values.values();
   }
+
+  public keys(): MapIterator<string> {
+    return this._values.keys();
+  }
 }
