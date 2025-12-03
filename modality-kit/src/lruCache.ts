@@ -53,7 +53,7 @@ export class LruCache<T> {
     return this._values.values();
   }
 
-  public keys(): MapIterator<string> {
-    return this._values.keys();
+  public keys(): string[] {
+    return [...this._values.keys()];
   }
 }
