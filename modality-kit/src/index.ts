@@ -44,3 +44,5 @@ export { isTestEnvironment } from "./util_tests/isTestEnvironment";
 
 export { WebSocketClient } from "./websocket-client";
 export { LruCache } from "./lruCache";
+export { SimpleCache } from "./simple-cache";
+export type { SimpleCacheOptions } from "./simple-cache";
