@@ -47,3 +47,4 @@ export { WebSocketClient } from "./websocket-client";
 export { LruCache } from "./lruCache";
 export { SimpleCache } from "./simple-cache";
 export type { SimpleCacheOptions } from "./simple-cache";
+export type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
