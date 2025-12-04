@@ -1,4 +1,5 @@
-import { ErrorCode } from "./util_error";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ErrorCode } from "./ErrorCode";
 
 /**
  * Utility functions for formatting MCP responses
@@ -7,15 +8,7 @@ import { ErrorCode } from "./util_error";
  * It provides generic response formatting for any MCP tool.
  */
 
-// Standard response format for MCP tools
-export interface McpSuccessResponse {
-  success: true; // Indicates a successful operation
-  content: any;
-  meta?: any; // Optional metadata about the response
-}
-
 export interface McpErrorResponse {
-  success: boolean; // for supporting graceful error, possibly set to true
   code?: string | number;
   error: string;
   operation?: string;
@@ -41,24 +34,40 @@ interface ErrorData extends Record<string, any> {
 /**
  * Format a successful response for MCP tools
  */
+const ContentType = [
+  "text",
+  "image",
+  "audio",
+  "resource_link",
+  "resource",
+] as const;
 export function formatSuccessResponse(
-  content: SuccessData,
+  successData: SuccessData,
   meta?: any
-): string {
-  let otherContent;
-  const instructions = content.instructions;
-  if (null != instructions) {
-    const { instructions, ...restContent } = content; // Destructure to ensure content is an object
-    otherContent = JSON.parse(JSON.stringify(restContent || {})); // Deep clone to clean data
-  } else {
-    otherContent = JSON.parse(JSON.stringify(content || {})); // Deep clone to clean data
+): CallToolResult {
+  const data = structuredClone(successData);
+  const { instructions, content: dataContent, ...restData } = data;
+  const result: CallToolResult = {
+    isError: false,
+    structuredContent: {
+      instructions,
+      meta,
+      ...restData,
+    },
+    content: [],
+  };
+  if (Array.isArray(dataContent)) {
+    result.content = dataContent.map((item: any) => {
+      if (typeof item === "string") {
+        return { type: "text", text: item };
+      } else if (item.type && ContentType.includes(item.type)) {
+        return item;
+      } else {
+        return { type: "text", text: JSON.stringify(item) };
+      }
+    });
   }
-  return JSON.stringify({
-    success: true,
-    instructions,
-    content: Object.keys(otherContent || {}).length ? otherContent : undefined,
-    meta,
-  } as McpSuccessResponse);
+  return result;
 }
 
 /**
@@ -68,30 +77,28 @@ export function formatErrorResponse(
   errorData: ErrorData | Error | string | unknown,
   operation?: string,
   meta?: Record<string, any>
-): string {
+): CallToolResult {
   let errorResponse: McpErrorResponse;
+  let isError = true;
 
   if (typeof errorData === "string") {
     // Handle string error messages
     errorResponse = {
-      success: false,
       error: errorData,
       operation,
       meta,
     };
   } else if (errorData instanceof ErrorCode) {
     errorResponse = {
-      success: false,
       error: errorData.message,
-      code: errorData.code,
-      reason: errorData.cause?.message,
       operation: operation,
       meta,
+      code: errorData.code,
+      reason: errorData.cause?.message,
     };
   } else if (errorData instanceof Error) {
     // Handle standard Error instances
     errorResponse = {
-      success: false,
       error: errorData.message,
       operation,
       meta,
@@ -103,8 +110,8 @@ export function formatErrorResponse(
   ) {
     // Handle ErrorData objects
     const errObj = errorData as ErrorData;
+    isError = !errObj.success; // for supporting graceful error, possibly set to true
     errorResponse = {
-      success: errObj.success || false, // for supporting graceful error, possibly set to true
       error: errObj.message,
       code: errObj.code,
       operation: errObj.operation || operation,
@@ -113,12 +120,19 @@ export function formatErrorResponse(
   } else {
     // Handle unknown error types
     errorResponse = {
-      success: false,
       error: "Unknown error",
       operation,
       meta,
     };
   }
 
-  return JSON.stringify(errorResponse);
+  return {
+    isError,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(errorResponse),
+      },
+    ],
+  };
 }

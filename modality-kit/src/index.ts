@@ -1,6 +1,7 @@
 export { formatErrorResponse, formatSuccessResponse } from "./util_response";
 export { getLoggerInstance, type ModalityLogger } from "./util_logger";
-export { withErrorHandling, ErrorCode } from "./util_error";
+export { withErrorHandling } from "./util_error";
+export { ErrorCode } from "./ErrorCode";
 
 export * as SymbolTypes from "./schemas/schemas_symbol";
 export type { EmptyType } from "./schemas/schemas_empty";

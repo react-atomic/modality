@@ -12,7 +12,7 @@ import {
   LanguageDetectionError,
 } from "../util_text_compression";
 import { ModalityLogger } from "../util_logger";
-import { ErrorCode } from "../util_error";
+import { ErrorCode } from "../ErrorCode";
 import { setupConsoleMock, cleanupConsoleMock, consoleMock } from "../util_tests/console-mock";
 
 // Setup console mocking for clean test output
@@ -54,10 +54,10 @@ describe("Text Compression Utility", () => {
 
     test("should handle invalid maxTokens", async () => {
       const compressor = new TextCompressionUtility();
-      await expect(compressor.compress("test", { maxTokens: 0 })).rejects.toThrow(
+      expect(compressor.compress("test", { maxTokens: 0 })).rejects.toThrow(
         "maxTokens must be greater than 0"
       );
-      await expect(compressor.compress("test", { maxTokens: -1 })).rejects.toThrow(
+      expect(compressor.compress("test", { maxTokens: -1 })).rejects.toThrow(
         "maxTokens must be greater than 0"
       );
     });

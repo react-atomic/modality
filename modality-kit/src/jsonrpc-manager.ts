@@ -4,7 +4,7 @@
  * Clean JSON-RPC 2.0 implementation for communication.
  * Provides method registration, routing, and lifecycle management.
  */
-import { ErrorCode } from "./util_error";
+import { ErrorCode } from "./ErrorCode";
 import { getLoggerInstance } from "./util_logger";
 import { JSONRPCCall } from "./util_pending";
 

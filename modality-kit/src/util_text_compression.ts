@@ -1,5 +1,5 @@
-import { ModalityLogger, type LogLevel } from './util_logger.js';
-import { ErrorCode } from './util_error.js';
+import { ModalityLogger } from './util_logger.js';
+import { ErrorCode } from './ErrorCode';
 
 // Simple configuration source
 export interface CompressionConfig {
@@ -100,9 +100,6 @@ export class LanguageDetectionError extends ErrorCode {
     this.fallbackLanguage = fallbackLanguage;
   }
 }
-
-// Use ModalityLogger for centralized logging
-type CompressionLogger = ModalityLogger;
 
 // CLDR-compliant language detector with proper error handling
 export class UniversalLanguageDetector {
