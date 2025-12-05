@@ -41,28 +41,25 @@ const ContentType = [
   "resource_link",
   "resource",
 ] as const;
+
 export function formatSuccessResponse(
   successData: SuccessData,
-  meta?: any
+  content?: any
 ): CallToolResult {
   const data = structuredClone(successData);
-  const { instructions, content: dataContent, ...restData } = data;
+  const contentData = content ? structuredClone(content) : null;
   const result: CallToolResult = {
     isError: false,
     content: [
       {
         type: "text",
-        text: JSON.stringify({
-          instructions,
-          meta,
-          ...restData,
-        }),
+        text: JSON.stringify(data),
       },
     ],
   };
-  if (Array.isArray(dataContent)) {
+  if (Array.isArray(contentData)) {
     result.content.push(
-      ...dataContent.map((item: any) => {
+      ...contentData.map((item: any) => {
         if (typeof item === "string") {
           return { type: "text", text: item };
         } else if (item.type && ContentType.includes(item.type)) {
@@ -72,8 +69,8 @@ export function formatSuccessResponse(
         }
       })
     );
-  } else if (null != dataContent) {
-    result.content.push({ type: "text", text: JSON.stringify(dataContent) });
+  } else if (null != contentData) {
+    result.content.push({ type: "text", text: JSON.stringify(contentData) });
   }
   return result;
 }
