@@ -70,7 +70,13 @@ export function formatSuccessResponse(
       })
     );
   } else if (null != contentData) {
-    result.content.push({ type: "text", text: JSON.stringify(contentData) });
+    result.content.push({
+      type: "text",
+      text:
+        typeof contentData === "string"
+          ? contentData
+          : JSON.stringify(contentData),
+    });
   }
   return result;
 }
