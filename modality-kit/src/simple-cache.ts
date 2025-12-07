@@ -33,7 +33,7 @@ export interface SimpleCacheOptions {
 /**
  * SimpleCache - Generic cache supporting TTL and/or LRU eviction
  */
-export class SimpleCache<T> {
+export class SimpleCache<T = any> {
   private lruCache: LruCache<CacheEntry<T>>;
   private readonly ttlMs: number | undefined;
   private readonly maxSize: number;
