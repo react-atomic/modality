@@ -1,4 +1,7 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  CallToolResult,
+  ContentBlock,
+} from "@modelcontextprotocol/sdk/types.js";
 import { ErrorCode } from "./ErrorCode";
 
 /**
@@ -42,13 +45,11 @@ const ContentType = [
   "resource",
 ] as const;
 
-export function mergeResponsesContent(
-  result: CallToolResult,
-  content: any
-): CallToolResult {
+export function mergeResponsesContent(content: any): ContentBlock[] {
   const contentData = content ? structuredClone(content) : null;
+  const contentBlock = new Array<ContentBlock>();
   if (Array.isArray(contentData)) {
-    result.content.push(
+    contentBlock.push(
       ...contentData.map((item: any) => {
         if (typeof item === "string") {
           return { type: "text", text: item };
@@ -60,7 +61,7 @@ export function mergeResponsesContent(
       })
     );
   } else if (null != contentData) {
-    result.content.push({
+    contentBlock.push({
       type: "text",
       text:
         typeof contentData === "string"
@@ -68,7 +69,7 @@ export function mergeResponsesContent(
           : JSON.stringify(contentData),
     });
   }
-  return result;
+  return contentBlock;
 }
 
 export function formatSuccessResponse(
@@ -85,7 +86,11 @@ export function formatSuccessResponse(
       },
     ],
   };
-  return mergeResponsesContent(result, content);
+  const contetnBlock = mergeResponsesContent(content);
+  if (contetnBlock.length > 0) {
+    result.content.push(...contetnBlock);
+  }
+  return result;
 }
 
 /**
