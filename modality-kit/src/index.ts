@@ -1,4 +1,4 @@
-export { formatErrorResponse, formatSuccessResponse } from "./util_response";
+export { formatErrorResponse, formatSuccessResponse, mergeResponsesContent } from "./util_response";
 export { getLoggerInstance, type ModalityLogger } from "./util_logger";
 export { withErrorHandling } from "./util_error";
 export { ErrorCode } from "./ErrorCode";

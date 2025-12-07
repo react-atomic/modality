@@ -42,21 +42,11 @@ const ContentType = [
   "resource",
 ] as const;
 
-export function formatSuccessResponse(
-  successData: SuccessData,
-  content?: any
+export function mergeResponsesContent(
+  result: CallToolResult,
+  content: any
 ): CallToolResult {
-  const data = structuredClone(successData);
   const contentData = content ? structuredClone(content) : null;
-  const result: CallToolResult = {
-    isError: false,
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(data),
-      },
-    ],
-  };
   if (Array.isArray(contentData)) {
     result.content.push(
       ...contentData.map((item: any) => {
@@ -79,6 +69,23 @@ export function formatSuccessResponse(
     });
   }
   return result;
+}
+
+export function formatSuccessResponse(
+  successData: SuccessData,
+  content?: any
+): CallToolResult {
+  const data = structuredClone(successData);
+  const result: CallToolResult = {
+    isError: false,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(data),
+      },
+    ],
+  };
+  return mergeResponsesContent(result, content);
 }
 
 /**
