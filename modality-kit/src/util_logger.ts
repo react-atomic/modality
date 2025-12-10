@@ -39,7 +39,10 @@ export class ModalityLogger {
   }
 
   private initLogLevel(): void {
-    const processEnvLogLevel = process.env.MODALITY_LOG_LEVEL as LogLevel;
+    let processEnvLogLevel: LogLevel = null;
+    if ("undefined" !== typeof process) {
+      processEnvLogLevel = process.env.MODALITY_LOG_LEVEL as LogLevel;
+    }
     this.logLevel =
       -1 !== levels.indexOf(processEnvLogLevel) ? processEnvLogLevel : "info";
   }

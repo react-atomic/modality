@@ -1,25 +1,28 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { 
-  ConsoleMock, 
-  consoleMock, 
-  setupConsoleMock, 
+import {
+  ConsoleMock,
+  createConsoleMock,
+  setupConsoleMock,
   cleanupConsoleMock,
   withConsole,
-  withConsoleAsync 
+  withConsoleAsync
 } from "../console-mock";
 
 describe("Console Mock Utility", () => {
   let mockInstance: ConsoleMock;
+  let sharedMock: ConsoleMock;
 
   beforeEach(() => {
     // Create a fresh instance for each test
     mockInstance = new ConsoleMock();
+    sharedMock = createConsoleMock();
   });
 
   afterEach(() => {
     // Ensure console is restored after each test
     mockInstance.restore();
-    consoleMock.restore();
+    sharedMock.restore();
+    cleanupConsoleMock();
   });
 
   describe("ConsoleMock Class", () => {
@@ -89,14 +92,10 @@ describe("Console Mock Utility", () => {
     test("setupConsoleMock and cleanupConsoleMock should work", () => {
       const originalLog = console.log;
 
-      expect(consoleMock.isActive).toBe(false);
-
       setupConsoleMock();
-      expect(consoleMock.isActive).toBe(true);
       expect(console.log).not.toBe(originalLog);
 
       cleanupConsoleMock();
-      expect(consoleMock.isActive).toBe(false);
       expect(console.log).toBe(originalLog);
     });
 

@@ -38,11 +38,6 @@ export type {
 } from "./schemas/jsonrpc";
 export { ERROR_METHOD_NOT_FOUND } from "./jsonrpc-manager";
 
-/**
- * For test tool
- */
-export { isTestEnvironment } from "./util_tests/isTestEnvironment";
-
 export { WebSocketClient } from "./websocket-client";
 export { LruCache } from "./lruCache";
 export { SimpleCache } from "./simple-cache";

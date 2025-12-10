@@ -112,8 +112,15 @@ export class ConsoleMock {
   }
 }
 
-// Global console mock instance
-export const consoleMock = new ConsoleMock();
+// Global console mock instance (internal use)
+const consoleMock = new ConsoleMock();
+
+/**
+ * Factory function to create a new ConsoleMock instance
+ */
+export function createConsoleMock(): ConsoleMock {
+  return new ConsoleMock();
+}
 
 /**
  * Convenience functions for common usage patterns

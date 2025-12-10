@@ -21,8 +21,7 @@ import {
   type JSONRPCId
 } from "../schemas/jsonrpc";
 import { JSONRPCUtils } from "../JSONRPCUtils";
-import { TimerMockManager } from "../util_tests/TimerMockManager";
-import { ConsoleMock } from "../util_tests/console-mock";
+import { TimerMockManager, ConsoleMock } from "modality-bun-kit";
 
 describe("JSONRPCCall", () => {
   let jsonRpcCall: JSONRPCCall;

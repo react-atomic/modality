@@ -6,8 +6,7 @@
       "name": "modality-kit",
       "devDependencies": {
         "@modelcontextprotocol/sdk": "^1.24.2",
-        "@types/bun": "^1.2.23",
-        "typescript": "^5.9.2",
+        "modality-bun-kit": "^0.0.1",
         "zod": "^3.25.76",
       },
     },
@@ -126,6 +125,8 @@
     "mime-db": ["mime-db@1.54.0", "", {}, "sha512-aU5EJuIN2WDemCcAp2vFBfp/m4EAhWJnUNSSw0ixs7/kXbd6Pg64EmwJkNdFhB8aWt1sH2CTXrLxo/iAGV3oPQ=="],
 
     "mime-types": ["mime-types@3.0.2", "", { "dependencies": { "mime-db": "^1.54.0" } }, "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A=="],
+
+    "modality-bun-kit": ["modality-bun-kit@0.0.1", "", { "dependencies": { "@types/bun": "^1.2.23", "typescript": "^5.9.2" } }, "sha512-O8WU/pBXuQT2B0MYHs0STbHiRwTCHNczDjyrwnJubNOemEpuDWFo1yh3e1RKwxN68G0BUDhyRk6qybuFuO30hQ=="],
 
     "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
 

@@ -13,15 +13,17 @@ import {
 } from "../util_text_compression";
 import { ModalityLogger } from "../util_logger";
 import { ErrorCode } from "../ErrorCode";
-import { setupConsoleMock, cleanupConsoleMock, consoleMock } from "../util_tests/console-mock";
+import { ConsoleMock } from "modality-bun-kit";
+
+const consoleMock = new ConsoleMock();
 
 // Setup console mocking for clean test output
 beforeAll(() => {
-  setupConsoleMock();
+  consoleMock.mock();
 });
 
 afterAll(() => {
-  cleanupConsoleMock();
+  consoleMock.restore();
 });
 
 describe("Text Compression Utility", () => {

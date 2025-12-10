@@ -19,7 +19,7 @@ import {
   type PendingOperationEventHandlers,
   type PendingOperation
 } from "../util_pending";
-import { TimerMockManager } from "../util_tests/TimerMockManager";
+import { TimerMockManager } from "modality-bun-kit";
 
 describe("PendingOperations", () => {
   let pendingOps: DataPendingOperations;
