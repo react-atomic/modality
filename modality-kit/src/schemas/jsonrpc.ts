@@ -19,6 +19,11 @@ export type JSONRPCMethod<TParams = JSONRPCParams, TResult = any> = (
 ) => Promise<TResult>;
 
 /**
+ * JSON-RPC 2.0 ID type - string, number, or null
+ */
+export type JSONRPCId = string | number | null;
+
+/**
  * JSON-RPC 2.0 Request object
  */
 export interface JSONRPCRequest {
@@ -73,7 +78,6 @@ export interface NotificationSendParams {
  */
 export const JSONRPC_VERSION = "2.0" as const;
 
-
 /**
  * JSON-RPC 2.0 parameter types - can be object, array, or null
  *
@@ -93,11 +97,6 @@ export const JSONRPC_VERSION = "2.0" as const;
  * See: https://www.jsonrpc.org/specification#parameter_structures
  */
 export type JSONRPCParams = Record<any, any> | any[] | null;
-
-/**
- * JSON-RPC 2.0 ID type - string, number, or null
- */
-export type JSONRPCId = string | number | null;
 
 /**
  * JSON-RPC 2.0 Error object

@@ -1,13 +1,15 @@
 {
-  "version": "0.14.15",
+  "version": "0.14.17",
   "name": "modality-kit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/react-atomic/modality"
+    "url": "git+https://github.com/react-atomic/modality.git"
   },
   "homepage": "https://github.com/react-atomic/modality/tree/main/modality-kit",
   "description": "A TypeScript-based toolkit for building web applications and managing communication with a backend server. It provides a set of utilities and components for handling JSON-RPC messages, managing pending operations, and creating reactive web components.",
-  "keywords": ["modality-kit"],
+  "keywords": [
+    "modality-kit"
+  ],
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {
@@ -32,5 +34,9 @@
     "test": "npm run build && bun test",
     "prepublishOnly": "npm t"
   },
-  "files": ["package.json", "README.md", "dist"]
+  "files": [
+    "package.json",
+    "README.md",
+    "dist"
+  ]
 }

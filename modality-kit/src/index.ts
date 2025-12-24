@@ -17,7 +17,7 @@ export type { DataPendingOperation, PendingOperation } from "./util_pending";
  */
 export { JSONRPCUtils } from "./JSONRPCUtils";
 export { JSONRPCManager } from "./jsonrpc-manager";
-export { JSONRPCErrorCode } from "./schemas/jsonrpc";
+export { JSONRPCErrorCode, JSONRPC_VERSION } from "./schemas/jsonrpc";
 export type {
   JSONRPCManagerEvents,
   JSONRPCManagerConfig,
@@ -33,6 +33,7 @@ export type {
   JSONRPCValidationResult,
   JSONRPCError,
   JSONRPCParams,
+  JSONRPCId,
   CommandExecuteParams,
   NotificationSendParams,
 } from "./schemas/jsonrpc";
