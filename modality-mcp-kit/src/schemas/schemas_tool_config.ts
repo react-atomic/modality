@@ -38,9 +38,8 @@ export namespace ToolParameters {
   export type InferInput<Schema extends ToolParameters> = NonNullable<
     Schema["~standard"]["types"]
   >["input"];
-  export type InferOutput<Schema extends ToolParameters> = NonNullable<
-    Schema["~standard"]["types"]
-  >["output"];
+  export type InferOutput<Schema extends ToolParameters> =
+    Schema["~standard"]["types"] extends { output: infer O } ? O : any;
 }
 
 /**

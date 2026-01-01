@@ -7,7 +7,7 @@
       "dependencies": {
         "modality-kit": "^0.14.17",
         "xsschema": "0.3.5",
-        "zod": "^3.25.76",
+        "zod": "^4.3.4",
         "zod-to-json-schema": "^3.25.0",
       },
       "devDependencies": {
@@ -36,8 +36,8 @@
 
     "xsschema": ["xsschema@0.3.5", "", { "peerDependencies": { "@valibot/to-json-schema": "^1.0.0", "arktype": "^2.1.20", "effect": "^3.16.0", "sury": "^10.0.0", "zod": "^3.25.0 || ^4.0.0", "zod-to-json-schema": "^3.24.5" }, "optionalPeers": ["@valibot/to-json-schema", "arktype", "effect", "sury", "zod", "zod-to-json-schema"] }, "sha512-f+dcy11dTv7aBEEfTbXWnrm/1b/Ds2k4taN0TpN6KCtPAD58kyE/R1znUdrHdBnhIFexj9k+pS1fm6FgtSISrQ=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.3.4", "", {}, "sha512-Zw/uYiiyF6pUT1qmKbZziChgNPRu+ZRneAsMUDU6IwmXdWt5JwcUfy2bvLOCUtz5UniaN/Zx5aFttZYbYc7O/A=="],
 
-    "zod-to-json-schema": ["zod-to-json-schema@3.25.0", "", { "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-HvWtU2UG41LALjajJrML6uQejQhNJx+JBO9IflpSja4R03iNWfKXrj6W2h7ljuLyc1nKS+9yDyL/9tD1U/yBnQ=="],
+    "zod-to-json-schema": ["zod-to-json-schema@3.25.1", "", { "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA=="],
   }
 }

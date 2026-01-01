@@ -246,13 +246,11 @@ function createJsonRpcManager(middleware: FastHonoMcp): HonoJSONRPCManager {
       const prompts = mcpPrompts.map((prompt) => ({
         name: prompt.name,
         ...(prompt.description && { description: prompt.description }),
-        ...(prompt.title && { title: prompt.title }),
         ...(prompt.arguments && {
-          arguments: prompt.arguments.map((arg) => ({
+          arguments: prompt.arguments.map((arg: any) => ({
             name: arg.name,
             ...(arg.description && { description: arg.description }),
             ...(arg.required !== undefined && { required: arg.required }),
-            ...(arg.title && { title: arg.title }),
             ...(arg.enum && { enum: Array.from(arg.enum) }),
           })),
         }),
@@ -299,12 +297,12 @@ function createJsonRpcManager(middleware: FastHonoMcp): HonoJSONRPCManager {
         return { completion: { values: [], total: 0 } };
       }
 
-      const arg = prompt.arguments.find((a) => a.name === argument.name);
+      const arg = prompt.arguments.find((a: any) => a.name === argument.name);
       if (!arg || !arg.enum) {
         return { completion: { values: [], total: 0 } };
       }
 
-      const enumValues = Array.from(arg.enum);
+      const enumValues: string[] = Array.from(arg.enum);
       const inputValue = (argument.value || "").trim().toLowerCase();
       const completionLimit = prompt.completionLimit ?? 10;
 
