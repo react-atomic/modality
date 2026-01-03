@@ -14,6 +14,7 @@ import {
 import { StreamingMCPTransportWrapper } from "./StreamingMCPTransportWrapper";
 import { getLoggerInstance } from "modality-kit";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
 
 const clientName = "modality-client";
 const logger = getLoggerInstance(clientName);
@@ -190,7 +191,7 @@ class ModalityClientImpl {
     this.client.close();
   }
 
-  public async listTools(): Promise<any> {
+  public async listTools(): Promise<ListToolsResult> {
     try {
       const client = this.client;
       const transport = this.createTransport();
