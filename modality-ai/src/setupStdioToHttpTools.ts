@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { setupAITools, ModalityFastMCP, type AITools } from "modality-mcp-kit";
+import {
+  setupAITools,
+  type ModalityFastMCP,
+  type AITools,
+} from "modality-mcp-kit";
 import { ModalityClient } from "./ModalityClient";
 
 interface StdioToHttpOptions {
@@ -71,9 +75,15 @@ export const setupStdioToHttpTools = async (
   mcpServer?: ModalityFastMCP,
   options?: StdioToHttpOptions
 ): Promise<AITools> => {
-  const { command = "bunx", args: optionArgs, env: optionEnv, pkg, timeout = 120000 } = options || {};
+  const {
+    command = "bunx",
+    args: optionArgs = [],
+    env: optionEnv,
+    pkg,
+    timeout = 120000,
+  } = options || {};
 
-  const args = optionArgs || (pkg ? [pkg] : []);
+  const args = pkg ? [pkg, ...optionArgs] : optionArgs;
 
   const env: Record<string, string> = {
     ...(Object.fromEntries(
