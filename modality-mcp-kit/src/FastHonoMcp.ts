@@ -45,6 +45,8 @@ export interface FastHonoMcpConfig extends Record<string, unknown> {
   version: string;
 }
 
+const defaultMcpPath = "mcp";
+
 // Initialize FastMCP instance for internal use (NO SERVER)
 
 export class FastHonoMcp extends ModalityFastMCP {
@@ -52,6 +54,7 @@ export class FastHonoMcp extends ModalityFastMCP {
   public config: FastHonoMcpConfig;
   public sessions = new McpSessionManager();
   private currentSessionId: string = "";
+  private mcpPath: string = defaultMcpPath;
 
   constructor(config: FastHonoMcpConfig) {
     super();
@@ -90,13 +93,13 @@ export class FastHonoMcp extends ModalityFastMCP {
       const url = new URL(c.req.url);
 
       // Only handle MCP routes
-      if (!url.pathname.startsWith("/mcp")) {
+      if (!url.pathname.startsWith(`/${this.mcpPath}`)) {
         return next();
       }
 
       try {
         // Handle DELETE for session disconnect
-        if (c.req.method === "DELETE" && url.pathname === "/mcp") {
+        if (c.req.method === "DELETE" && url.pathname === `/${this.mcpPath}`) {
           const requestSessionId = c.req.header("mcp-session-id");
 
           // Validate session ID matches
@@ -114,7 +117,7 @@ export class FastHonoMcp extends ModalityFastMCP {
         }
 
         // Handle main MCP endpoint
-        if (c.req.method === "POST" && url.pathname === "/mcp") {
+        if (c.req.method === "POST" && url.pathname === `/${this.mcpPath}`) {
           // Ensure session exists (creates new one if disconnected)
           this.ensureSession();
 
@@ -146,9 +149,15 @@ export class FastHonoMcp extends ModalityFastMCP {
           }, headers);
         }
 
-        return c.json({ error: "MCP endpoint not implemented" }, 501);
+        return c.json(
+          { error: `${url.pathname} endpoint not implemented` },
+          501
+        );
       } catch (error) {
-        this.logger.error("MCP Middleware Error", error as Error);
+        this.logger.error(
+          `FastHonoMcp (${url.pathname}) Middleware Error`,
+          error as Error
+        );
         const message =
           error instanceof Error ? error.message : "Internal error";
         return c.text(sseError(null, -32603, message), 500, SSE_HEADERS);
@@ -156,7 +165,8 @@ export class FastHonoMcp extends ModalityFastMCP {
     };
   }
 
-  initHono(app: Hono, path: string = "mcp"): this {
+  initHono(app: Hono, path: string = defaultMcpPath): this {
+    this.mcpPath = path;
     const middlewareHandler = this.handler();
 
     app.use(`/${path}`, middlewareHandler);
