@@ -4,7 +4,7 @@ import {
   type ModalityFastMCP,
   type AITools,
 } from "modality-mcp-kit";
-import { ModalityClient } from "./ModalityClient";
+import { ModalityClient, type ModalityClientInstance } from "./ModalityClient";
 
 interface StdioToHttpOptions {
   command?: string;
@@ -67,14 +67,9 @@ function jsonSchemaToZod(schema: any): z.ZodType<any> {
   }
 }
 
-/**
- * Setup Chrome DevTools MCP tools
- * Dynamically loads all tools from chrome-devtools-mcp@latest and exposes them as AITools
- */
-export const setupStdioToHttpTools = async (
-  mcpServer?: ModalityFastMCP,
+export const createStdioToHttpClient = (
   options?: StdioToHttpOptions
-): Promise<AITools> => {
+): ModalityClientInstance => {
   const {
     command = "bunx",
     args: optionArgs = [],
@@ -100,7 +95,18 @@ export const setupStdioToHttpTools = async (
     },
     timeout
   );
+  return client;
+};
 
+/**
+ * Setup Chrome DevTools MCP tools
+ * Dynamically loads all tools from chrome-devtools-mcp@latest and exposes them as AITools
+ */
+export const setupStdioToHttpTools = async (
+  mcpServer?: ModalityFastMCP,
+  options?: StdioToHttpOptions
+): Promise<AITools> => {
+  const client = createStdioToHttpClient(options);
   // Dynamically load tools from Chrome DevTools MCP
   const tools = await client.listTools();
 

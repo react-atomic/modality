@@ -215,18 +215,20 @@ class ModalityClientImpl {
   }
 }
 
+export type ModalityClientInstance = ModalityClientImpl;
+
 function http(
   url: string,
   timeout?: number,
   options?: StreamableHTTPClientTransportOptions,
-): ModalityClientImpl {
+): ModalityClientInstance {
   return new ModalityClientImpl({ type: "http", url, options }, timeout);
 }
 
 function stdio(
   serverParams: StdioServerParameters,
   timeout?: number
-): ModalityClientImpl {
+): ModalityClientInstance {
   return new ModalityClientImpl({ type: "stdio", serverParams }, timeout);
 }
 
@@ -234,7 +236,7 @@ function sse(
   url: string,
   timeout?: number,
   options?: SSEClientTransportOptions,
-): ModalityClientImpl {
+): ModalityClientInstance {
   return new ModalityClientImpl({ type: "sse", url, options }, timeout);
 }
 
@@ -244,4 +246,3 @@ export const ModalityClient = {
   sse,
 };
 
-export type ModalityClientInstance = ModalityClientImpl;
