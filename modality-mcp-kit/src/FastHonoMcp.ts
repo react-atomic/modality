@@ -25,7 +25,7 @@
  */
 
 import type { MiddlewareHandler, Hono } from "hono";
-import { ModalityFastMCP } from "modality-mcp-kit";
+import { ModalityFastMCP } from "./util_mcp_tools_converter.js";
 import {
   JSONRPCManager,
   type JSONRPCResponse,
