@@ -46,6 +46,7 @@ export interface FastHonoMcpConfig extends Record<string, unknown> {
 }
 
 const defaultMcpPath = "/mcp";
+const mcpSchemaVersion = "2025-11-25";
 
 // Initialize FastMCP instance for internal use (NO SERVER)
 
@@ -150,8 +151,8 @@ export class FastHonoMcp extends ModalityFastMCP {
         }
 
         return c.json(
-          { error: `${url.pathname} endpoint not implemented` },
-          501
+          { error: `Use ${this.mcpPath} for MCP requests` },
+          400
         );
       } catch (error) {
         this.logger.error(
@@ -201,7 +202,7 @@ function createJsonRpcManager(middleware: FastHonoMcp): HonoJSONRPCManager {
 
       // Return valid InitializeResult
       return {
-        protocolVersion: "2025-11-25",
+        protocolVersion: mcpSchemaVersion,
         capabilities: {
           tools: { listChanged: true },
           ...(mcpPrompts.length > 0 && { prompts: { listChanged: true } }),
