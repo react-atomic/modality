@@ -6,7 +6,7 @@ import {
 } from "modality-mcp-kit";
 import { ModalityClient, type ModalityClientInstance } from "./ModalityClient";
 
-interface StdioToHttpOptions {
+export interface StdioToHttpOptions {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -103,10 +103,9 @@ export const createStdioToHttpClient = (
  * Dynamically loads all tools from chrome-devtools-mcp@latest and exposes them as AITools
  */
 export const setupStdioToHttpTools = async (
-  mcpServer?: ModalityFastMCP,
-  options?: StdioToHttpOptions
+  client: ModalityClientInstance,
+  mcpServer?: ModalityFastMCP
 ): Promise<AITools> => {
-  const client = createStdioToHttpClient(options);
   // Dynamically load tools from Chrome DevTools MCP
   const tools = await client.listTools();
 

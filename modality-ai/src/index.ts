@@ -9,3 +9,4 @@ export {
   createStdioToHttpClient,
 } from "./setupStdioToHttpTools";
 export type { ModalityClientInstance } from "./ModalityClient";
+export type { StdioToHttpOptions } from "./setupStdioToHttpTools";

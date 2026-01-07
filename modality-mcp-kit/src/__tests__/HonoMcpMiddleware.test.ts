@@ -62,7 +62,7 @@ describe("HonoMcpMiddleware", () => {
       use: mock(() => mockApp),
     };
 
-    middleware.initHono(mockApp as any, "api/mcp");
+    middleware.initHono(mockApp as any, "/api/mcp");
 
     expect(mockApp.use).toHaveBeenCalledWith("/api/mcp", expect.any(Function));
     expect(mockApp.use).toHaveBeenCalledWith(

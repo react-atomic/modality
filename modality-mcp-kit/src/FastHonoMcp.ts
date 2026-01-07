@@ -45,7 +45,7 @@ export interface FastHonoMcpConfig extends Record<string, unknown> {
   version: string;
 }
 
-const defaultMcpPath = "mcp";
+const defaultMcpPath = "/mcp";
 
 // Initialize FastMCP instance for internal use (NO SERVER)
 
@@ -93,13 +93,13 @@ export class FastHonoMcp extends ModalityFastMCP {
       const url = new URL(c.req.url);
 
       // Only handle MCP routes
-      if (!url.pathname.startsWith(`/${this.mcpPath}`)) {
+      if (!url.pathname.startsWith(this.mcpPath)) {
         return next();
       }
 
       try {
         // Handle DELETE for session disconnect
-        if (c.req.method === "DELETE" && url.pathname === `/${this.mcpPath}`) {
+        if (c.req.method === "DELETE" && url.pathname === this.mcpPath) {
           const requestSessionId = c.req.header("mcp-session-id");
 
           // Validate session ID matches
@@ -117,7 +117,7 @@ export class FastHonoMcp extends ModalityFastMCP {
         }
 
         // Handle main MCP endpoint
-        if (c.req.method === "POST" && url.pathname === `/${this.mcpPath}`) {
+        if (c.req.method === "POST" && url.pathname === this.mcpPath) {
           // Ensure session exists (creates new one if disconnected)
           this.ensureSession();
 
@@ -169,8 +169,8 @@ export class FastHonoMcp extends ModalityFastMCP {
     this.mcpPath = path;
     const middlewareHandler = this.handler();
 
-    app.use(`/${path}`, middlewareHandler);
-    app.use(`/${path}/*`, middlewareHandler);
+    app.use(path, middlewareHandler);
+    app.use(`${path}/*`, middlewareHandler);
 
     return this;
   }
