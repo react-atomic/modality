@@ -39,6 +39,7 @@ import {
   type SSEStreamWriter,
 } from "./sse-wrapper.js";
 import { McpSessionManager } from "./McpSessionManager.js";
+import { handleToolCall } from "./handlers/tools-call-handler.js";
 
 export interface FastHonoMcpConfig extends Record<string, unknown> {
   name: string;
@@ -235,20 +236,7 @@ function createJsonRpcManager(middleware: FastHonoMcp): HonoJSONRPCManager {
 
   jsonrpc.registerMethod("tools/call", {
     async handler(params) {
-      const { ERROR_METHOD_NOT_FOUND } = await import("modality-kit");
-      const { name, arguments: args } = params as any;
-      const tool = mcpTools.find((t) => t.name === name);
-      if (!tool) {
-        throw new ERROR_METHOD_NOT_FOUND(`Tool not found: ${name}`);
-      }
-      return {
-        content: [
-          {
-            text: await tool.execute(args),
-            type: "text",
-          },
-        ],
-      };
+      return handleToolCall(params as any, mcpTools);
     },
   });
 
