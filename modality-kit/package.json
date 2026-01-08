@@ -1,5 +1,5 @@
 {
-  "version": "0.15.3",
+  "version": "0.15.4",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -15,7 +15,7 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.24.2",
     "modality-bun-kit": "^0.0.1",
-    "zod": "^4.3.4"
+    "zod": "^4.3.5"
   },
   "exports": {
     "types": "./dist/types/index.d.ts",
