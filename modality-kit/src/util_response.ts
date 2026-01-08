@@ -19,7 +19,7 @@ export interface McpErrorResponse {
   meta?: Record<string, any>; // Optional metadata about the error
 }
 
-interface SuccessData extends Record<string, any> {
+interface SuccessData {
   success?: boolean; // for send data with error
   message?: string;
   instructions?: string | any[];
@@ -28,7 +28,7 @@ interface SuccessData extends Record<string, any> {
 /**
  * Generic error data interface for MCP error responses
  */
-interface ErrorData extends Record<string, any> {
+interface ErrorData {
   success?: boolean; // for supporting graceful error, possibly set to true
   code?: string | number;
   message: string;
@@ -78,8 +78,9 @@ export function formatSuccessResponse(
   content?: any
 ): CallToolResult {
   const data = structuredClone(successData);
+  const isError = null != data.success ? !data.success : false;
   const result: CallToolResult = {
-    isError: null != successData.success ? !successData.success : false,
+    isError,
     content: [
       {
         type: "text",
