@@ -20,6 +20,7 @@ export interface McpErrorResponse {
 }
 
 interface SuccessData extends Record<string, any> {
+  success?: boolean; // for send data with error
   message?: string;
   instructions?: string | any[];
 }
@@ -78,7 +79,7 @@ export function formatSuccessResponse(
 ): CallToolResult {
   const data = structuredClone(successData);
   const result: CallToolResult = {
-    isError: false,
+    isError: null != successData.success ? !successData.success : false,
     content: [
       {
         type: "text",
