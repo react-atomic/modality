@@ -60,7 +60,6 @@ export class FastHonoMcp extends ModalityFastMCP {
   public logger!: ReturnType<typeof getLoggerInstance>;
   public config: FastHonoMcpConfig;
   public sessions = new McpSessionManager();
-  private currentSessionId: string = "";
   public mcpPath: string = defaultMcpPath;
 
   constructor(config: FastHonoMcpConfig) {
@@ -96,26 +95,41 @@ export class FastHonoMcp extends ModalityFastMCP {
   /**
    * Disconnect and cleanup a session
    */
-  disconnect(sessionId?: string): boolean {
-    const targetSession = sessionId || this.currentSessionId;
-    const disconnected = this.sessions.disconnect(targetSession);
+  disconnect(sessionId: string): boolean {
+    const disconnected = this.sessions.disconnect(sessionId);
     if (disconnected) {
-      this.logger?.info(`Session disconnected: ${targetSession}`);
+      this.logger?.info(`Session disconnected: ${sessionId}`);
     }
     return disconnected;
   }
 
   /**
    * Ensure session exists, create if needed
+   * Returns the session ID to use
    */
-  private ensureSession(): void {
-    if (!this.sessions.has(this.currentSessionId)) {
-      const session = this.sessions.create();
-      this.currentSessionId = session.id;
-      this.logger?.info(`Session connected: ${this.currentSessionId}`);
-    } else {
-      this.sessions.touch(this.currentSessionId);
+  private ensureSession(requestSessionId?: string): string {
+    if (requestSessionId && this.sessions.has(requestSessionId)) {
+      // Session exists, update activity
+      this.sessions.touch(requestSessionId);
+      return requestSessionId;
     }
+    // Create new session (either no ID provided or ID doesn't exist)
+    const session = this.sessions.create();
+    this.logger?.info(`Session created: ${session.id}`);
+    return session.id;
+  }
+
+  /**
+   * Get CORS headers for cross-origin requests
+   */
+  private getCorsHeaders(): Record<string, string> {
+    return {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS, DELETE",
+      "Access-Control-Allow-Headers":
+        "content-type,mcp-protocol-version,mcp-session-id",
+      "Access-Control-Max-Age": "86400",
+    };
   }
 
   handler(): MiddlewareHandler {
@@ -129,19 +143,27 @@ export class FastHonoMcp extends ModalityFastMCP {
         return next();
       }
 
+      // Set CORS headers once for all responses
+      const corsHeaders = this.getCorsHeaders();
+      Object.entries(corsHeaders).forEach(([key, value]) => {
+        c.header(key, value);
+      });
+
       try {
+        // Handle CORS preflight OPTIONS request
+        if (c.req.method === "OPTIONS" && url.pathname === this.mcpPath) {
+          return c.body(null, 204);
+        }
+
         // Handle DELETE for session disconnect
         if (c.req.method === "DELETE" && url.pathname === this.mcpPath) {
           const requestSessionId = c.req.header("mcp-session-id");
 
-          // Validate session ID matches
-          if (requestSessionId && requestSessionId !== this.currentSessionId) {
-            return c.json({ error: "Session ID mismatch" }, 400);
+          if (!requestSessionId) {
+            return c.json({ error: "Missing mcp-session-id header" }, 400);
           }
 
-          const disconnected = this.disconnect(
-            requestSessionId || this.currentSessionId
-          );
+          const disconnected = this.disconnect(requestSessionId);
           if (disconnected) {
             return c.body(null, 204);
           }
@@ -150,38 +172,43 @@ export class FastHonoMcp extends ModalityFastMCP {
 
         // Handle main MCP endpoint
         if (c.req.method === "POST" && url.pathname === this.mcpPath) {
-          // Ensure session exists (creates new one if disconnected)
-          this.ensureSession();
-
-          const headers = {
-            "mcp-session-id": this.currentSessionId,
-          };
+          const requestSessionId = c.req.header("mcp-session-id");
+          const sessionId = this.ensureSession(requestSessionId);
+          c.header("mcp-session-id", sessionId);
 
           const bodyText = await c.req.text();
           this.logger.info("MCP Middleware Received Body", { bodyText });
 
-          // Handle notifications/initialized locally (no response needed for notifications)
+          // Handle notifications/initialized
           try {
             const requestData = JSON.parse(bodyText);
             if (requestData?.method === "notifications/initialized") {
-              return c.text(sseNotification(), 200, {
-                ...SSE_HEADERS,
-                ...headers,
+              Object.entries(SSE_HEADERS).forEach(([key, value]) => {
+                c.header(key, value);
               });
+              return c.text(sseNotification(), 200);
             }
           } catch {
             // Not valid JSON, continue with normal processing
           }
 
           // Use streaming SSE response
+          const responseHeaders = {
+            "mcp-session-id": sessionId,
+            ...corsHeaders,
+          };
           return createSSEStream(async (writer: SSEStreamWriter) => {
             const result =
               await createJsonRpcManager(this).validateMessage(bodyText);
-            writer.send(result as unknown as JSONRPCResponse);
-          }, headers);
+            await writer.send(result as unknown as JSONRPCResponse);
+            await writer.close();
+          }, responseHeaders);
         }
 
-        return c.json({ error: `Use ${this.mcpPath} for MCP requests` }, 400);
+        return c.json(
+          { error: `Use ${this.mcpPath} for MCP requests` },
+          400
+        );
       } catch (error) {
         this.logger.error(
           `FastHonoMcp (${url.pathname}) Middleware Error`,
@@ -189,7 +216,10 @@ export class FastHonoMcp extends ModalityFastMCP {
         );
         const message =
           error instanceof Error ? error.message : "Internal error";
-        return c.text(sseError(null, -32603, message), 500, SSE_HEADERS);
+        Object.entries(SSE_HEADERS).forEach(([key, value]) => {
+          c.header(key, value);
+        });
+        return c.text(sseError(null, -32603, message), 500);
       }
     };
   }

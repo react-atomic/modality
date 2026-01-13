@@ -25,11 +25,13 @@ interface SSEMessage {
 
 /**
  * Standard SSE response headers for MCP
+ * Transfer-Encoding: chunked is required for streaming responses
  */
 export const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
   "Cache-Control": "no-cache",
   "Connection": "keep-alive",
+  "Transfer-Encoding": "chunked",
 } as const;
 
 // ============================================
@@ -119,41 +121,47 @@ export function sseNotification(): string {
 
 /**
  * SSE Stream writer for true streaming support
+ * Uses TransformStream with TextEncoder for HTTP-compatible byte streaming
  */
 export class SSEStreamWriter {
-  private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  private readable: ReadableStream<Uint8Array>;
   private encoder = new TextEncoder();
   private closed = false;
 
+  constructor() {
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    this.readable = readable;
+    this.writer = writable.getWriter();
+  }
+
   /**
-   * Create a ReadableStream for SSE responses
+   * Get the readable stream for the Response
    */
-  createStream(): ReadableStream<Uint8Array> {
-    return new ReadableStream({
-      start: (controller) => {
-        this.controller = controller;
-      },
-      cancel: () => {
-        this.closed = true;
-        this.controller = null;
-      },
-    });
+  getReadableStream(): ReadableStream<Uint8Array> {
+    return this.readable;
+  }
+
+  /**
+   * Write string data as encoded bytes
+   */
+  private async write(data: string): Promise<void> {
+    if (this.closed || !this.writer) return;
+    await this.writer.write(this.encoder.encode(data));
   }
 
   /**
    * Send a JSON-RPC response as SSE message
    */
-  send(response: JSONRPCResponse): void {
-    if (this.closed || !this.controller) return;
+  async send(response: JSONRPCResponse): Promise<void> {
     const formatted = wrapAndFormatSSE(response);
-    this.controller.enqueue(this.encoder.encode(formatted));
+    await this.write(formatted);
   }
 
   /**
    * Send a progress notification
    */
-  sendProgress(progressToken: string | number, progress: number, total?: number): void {
-    if (this.closed || !this.controller) return;
+  async sendProgress(progressToken: string | number, progress: number, total?: number): Promise<void> {
     const notification: JSONRPCResponse = {
       jsonrpc: "2.0",
       id: null,
@@ -167,74 +175,79 @@ export class SSEStreamWriter {
       },
     };
     const formatted = wrapAndFormatSSE(notification);
-    this.controller.enqueue(this.encoder.encode(formatted));
+    await this.write(formatted);
   }
 
   /**
    * Send a keep-alive ping (SSE comment)
    */
-  ping(): void {
-    if (this.closed || !this.controller) return;
-    this.controller.enqueue(this.encoder.encode(": ping\n\n"));
+  async ping(): Promise<void> {
+    await this.write(": ping\n\n");
   }
 
   /**
    * Send raw SSE event
    */
-  sendEvent(event: string, data: unknown, id?: string): void {
-    if (this.closed || !this.controller) return;
+  async sendEvent(event: string, data: unknown, id?: string): Promise<void> {
     const sseId = id || generateSSEId();
     const formatted = `event: ${event}\nid: ${sseId}\ndata: ${JSON.stringify(data)}\n\n`;
-    this.controller.enqueue(this.encoder.encode(formatted));
+    await this.write(formatted);
   }
 
   /**
    * Close the stream
    */
-  close(): void {
-    if (this.closed || !this.controller) return;
+  async close(): Promise<void> {
+    if (this.closed || !this.writer) return;
     this.closed = true;
-    this.controller.close();
-    this.controller = null;
+    await this.writer.close();
+    this.writer = null;
   }
 
   /**
    * Check if stream is still open
    */
   get isOpen(): boolean {
-    return !this.closed && this.controller !== null;
+    return !this.closed && this.writer !== null;
   }
 }
 
 /**
  * Create a streaming SSE response
+ *
+ * The stream lifecycle is managed as follows:
+ * - Handler sends data via writer.send()
+ * - Handler MUST call writer.close() when done sending all data
+ * - On error, an error response is sent and stream is closed
+ * - Client disconnect triggers cancel callback for cleanup
+ *
+ * IMPORTANT: The handler is responsible for calling writer.close()
+ * when it's finished sending data. Not closing will keep the connection open.
  */
 export function createSSEStream(
   handler: (writer: SSEStreamWriter) => Promise<void>,
   headers?: Record<string, string>
 ): Response {
   const writer = new SSEStreamWriter();
-  const stream = writer.createStream();
 
   // Execute handler asynchronously
-  handler(writer)
-    .catch((error) => {
-      if (writer.isOpen) {
-        writer.send({
-          jsonrpc: "2.0",
-          id: null,
-          error: {
-            code: -32603,
-            message: error instanceof Error ? error.message : "Internal error",
-          },
-        });
-      }
-    })
-    .finally(() => {
-      writer.close();
-    });
+  // Handler is responsible for calling writer.close() when done
+  handler(writer).catch(async (error) => {
+    if (writer.isOpen) {
+      await writer.send({
+        jsonrpc: "2.0",
+        id: null,
+        error: {
+          code: -32603,
+          message: error instanceof Error ? error.message : "Internal error",
+        },
+      });
+      // Close stream on error to signal completion
+      await writer.close();
+    }
+  });
 
-  return new Response(stream, {
+  return new Response(writer.getReadableStream(), {
     headers: { ...SSE_HEADERS, ...headers },
   });
 }
