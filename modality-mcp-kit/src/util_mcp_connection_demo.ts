@@ -492,7 +492,7 @@ function generateHtmlPage(
       <p>Interactive guide for connecting AI tools and development utilities</p>
       ${
         config
-          ? `<p style="font-size: 0.95rem; margin-top: 1rem; opacity: 0.8;">Server: <strong>${config.serverName}</strong> v${config.serverVersion || "unknown"}</p>`
+          ? `<p style="font-size: 0.95rem; margin-top: 1rem; opacity: 0.9;">Server URL: <strong style="color: #ffd700; background: rgba(255, 215, 0, 0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 700;">${serverUrl}${mcpPath}</strong></p>`
           : ""
       }
     </header>
@@ -502,7 +502,7 @@ function generateHtmlPage(
         config?.helloWorld
           ? `<div class="intro-section">
         <h2>Hello Prompt</h2>
-        <p>${config.helloWorld}</p>
+        <code>${config.helloWorld}</code>
       </div>`
           : `<div class="intro-section">
         <h2>Welcome to MCP</h2>
@@ -529,7 +529,7 @@ function generateHtmlPage(
       <p>${config?.serverName || "MCP Connection Demo"} &copy; 2026 | Last updated: ${new Date().toLocaleDateString()}</p>
       ${
         config
-          ? `<p>Server: <strong>${config.serverName}</strong> | URL: <code>${serverUrl}</code></p>`
+          ? `<p>Server: <strong>${config.serverName} ${config.serverVersion ? `v${config.serverVersion}` : ""}</strong></p>`
           : ""
       }
     </footer>
