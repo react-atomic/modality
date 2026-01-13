@@ -37,7 +37,7 @@ const connectAIShowcase = (
   claudeCode: {
     name: "Claude Code",
     description: "Official Claude IDE tool for seamless development workflow",
-    connectionCode: `claude mcp add -s user --transport http ${serverName} ${serverUrl}${mcpPath}`,
+    connectionCode: `claude mcp add -s user --transport http ${serverName} {serverUrl}${mcpPath}`,
     type: "editor",
   },
   githubCli: {
@@ -49,7 +49,7 @@ const connectAIShowcase = (
   "mcpServers": {
     "${serverName}": {
       "type": "http",
-      "url": "${serverUrl}${mcpPath}",
+      "url": "{serverUrl}${mcpPath}",
       "headers": {},
       "tools": ["*"]
     }
@@ -60,7 +60,7 @@ const connectAIShowcase = (
   vscode: {
     name: "VS Code",
     description: "Popular code editor with MCP extension support",
-    connectionCode: `code --add-mcp '{"name":"${serverName}", "url": "${serverUrl}${mcpPath}", "type": "http"}'`,
+    connectionCode: `code --add-mcp '{"name":"${serverName}", "url": "{serverUrl}${mcpPath}", "type": "http"}'`,
     type: "editor",
   },
   mytyAi: {
@@ -72,7 +72,7 @@ const connectAIShowcase = (
       "command": "npx",
       "args": [
         "mcp-remote",
-        "${serverUrl}${mcpPath}"
+        "{serverUrl}${mcpPath}"
       ]
     }
   }
@@ -91,7 +91,7 @@ const generateDemoDocumentation = (
   mcpPath: string = "/mcp",
   helloWorld?: string
 ): string => {
-  const tools = connectAIShowcase(serverName, serverUrl, mcpPath);
+  const tools = connectAIShowcase(serverName, "{serverUrl}", mcpPath);
   return `# MCP Connection Guide
 
 ${helloWorld ? `## Hello Prompt\n\n${helloWorld}\n` : ""}## How to Connect
@@ -147,18 +147,8 @@ export const mcpConnectionDemoHandler = async (
   const serverName = config?.serverName || "mcp-server";
   const mcpPath = config?.mcpPath || "/mcp";
 
-  // Get server URL: from config first, then extract from request
-  let serverUrl: string = "";
-  if (!config?.serverUrl && c.req.url) {
-    try {
-      const url = new URL(c.req.url);
-      serverUrl = `${url.protocol}//${url.host}`;
-    } catch {
-      // Fallback to default if URL parsing fails
-    }
-  } else if (config?.serverUrl) {
-    serverUrl = config?.serverUrl;
-  }
+  // Get server URL: from config only (client-side will detect actual protocol)
+  let serverUrl: string = config?.serverUrl || "";
 
   const tools = connectAIShowcase(serverName, serverUrl, mcpPath);
   const documentation = generateDemoDocumentation(serverName, serverUrl, mcpPath, config?.helloWorld);
@@ -490,11 +480,7 @@ function generateHtmlPage(
     <header>
       <h1>🌐 ${config?.serverName || "MCP Connection Demo"}</h1>
       <p>Interactive guide for connecting AI tools and development utilities</p>
-      ${
-        config
-          ? `<p style="font-size: 0.95rem; margin-top: 1rem; opacity: 0.9;">Server URL: <strong style="color: #ffd700; background: rgba(255, 215, 0, 0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 700;">${serverUrl}${mcpPath}</strong></p>`
-          : ""
-      }
+      <p style="font-size: 0.95rem; margin-top: 1rem; opacity: 0.9;">Server URL: <strong id="server-url-display" style="color: #ffd700; background: rgba(255, 215, 0, 0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 700;">${serverUrl ? serverUrl + mcpPath : "Detecting..."}</strong></p>
     </header>
 
     <div class="content">
@@ -536,6 +522,27 @@ function generateHtmlPage(
   </div>
 
   <script>
+    // Detect client-side protocol and replace placeholders
+    function initializeServerUrl() {
+      const protocol = window.location.protocol.replace(':', '');
+      const host = window.location.host;
+      const serverUrl = protocol + '://' + host;
+      const mcpPath = '${mcpPath}';
+
+      // Update server URL display
+      const displayElement = document.getElementById('server-url-display');
+      if (displayElement) {
+        displayElement.textContent = serverUrl + mcpPath;
+      }
+
+      // Replace {serverUrl} placeholders in all code blocks
+      document.querySelectorAll('pre code').forEach(codeBlock => {
+        let code = codeBlock.textContent;
+        code = code.replace(/{serverUrl}/g, serverUrl);
+        codeBlock.textContent = code;
+      });
+    }
+
     function copyToClipboard(text) {
       navigator.clipboard.writeText(text).then(() => {
         const btn = event.target;
@@ -548,6 +555,13 @@ function generateHtmlPage(
         console.error('Failed to copy:', err);
         alert('Failed to copy to clipboard');
       });
+    }
+
+    // Initialize on DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeServerUrl);
+    } else {
+      initializeServerUrl();
     }
 
     // Log page load performance
