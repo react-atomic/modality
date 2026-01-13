@@ -28,11 +28,13 @@ describe("HonoMcpMiddleware", () => {
 
     const mockApp = {
       use: mock(() => mockApp),
+      get: mock(() => mockApp),
     };
 
-    const result = middleware.initHono(mockApp as any, "mcp");
+    const result = middleware.initHono(mockApp as any);
 
     expect(mockApp.use).toHaveBeenCalledTimes(2);
+    expect(mockApp.get).toHaveBeenCalled();
     expect(result).toBe(middleware);
   });
 
@@ -44,6 +46,7 @@ describe("HonoMcpMiddleware", () => {
 
     const mockApp = {
       use: mock(() => mockApp),
+      get: mock(() => mockApp),
     };
 
     middleware.initHono(mockApp as any);
@@ -56,13 +59,15 @@ describe("HonoMcpMiddleware", () => {
     const middleware = new FastHonoMcp({
       name: "test-mcp",
       version: "0.0.1",
+      mcpPath: "/api/mcp",
     });
 
     const mockApp = {
       use: mock(() => mockApp),
+      get: mock(() => mockApp),
     };
 
-    middleware.initHono(mockApp as any, "/api/mcp");
+    middleware.initHono(mockApp as any);
 
     expect(mockApp.use).toHaveBeenCalledWith("/api/mcp", expect.any(Function));
     expect(mockApp.use).toHaveBeenCalledWith(

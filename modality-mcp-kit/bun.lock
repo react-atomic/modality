@@ -17,7 +17,7 @@
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
-        "hono": "*",
+        "hono": "^4.11.3",
         "zod": "^4.3.5",
       },
     },

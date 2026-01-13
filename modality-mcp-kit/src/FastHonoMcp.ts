@@ -26,6 +26,7 @@
 
 import type { MiddlewareHandler, Hono } from "hono";
 import { ModalityFastMCP } from "./util_mcp_tools_converter.js";
+import { createMcpConnectionDemoHandler } from "./util_mcp_connection_demo.js";
 import {
   JSONRPCManager,
   type JSONRPCResponse,
@@ -44,9 +45,13 @@ import { handleToolCall } from "./handlers/tools-call-handler.js";
 export interface FastHonoMcpConfig extends Record<string, unknown> {
   name: string;
   version: string;
+  mcpPath?: string;
+  mcpDemoPath?: string;
+  helloWorld?: string;
 }
 
 const defaultMcpPath = "/mcp";
+const defaultMcpDemoPath = "/";
 const mcpSchemaVersion = "2025-11-25";
 
 // Initialize FastMCP instance for internal use (NO SERVER)
@@ -56,11 +61,36 @@ export class FastHonoMcp extends ModalityFastMCP {
   public config: FastHonoMcpConfig;
   public sessions = new McpSessionManager();
   private currentSessionId: string = "";
-  private mcpPath: string = defaultMcpPath;
+  public mcpPath: string = defaultMcpPath;
 
   constructor(config: FastHonoMcpConfig) {
     super();
     this.config = config;
+  }
+
+  initHono(app: Hono): this {
+    const {
+      name,
+      version,
+      helloWorld,
+      mcpPath = defaultMcpPath,
+      mcpDemoPath = defaultMcpDemoPath,
+    } = this.config;
+    this.mcpPath = mcpPath;
+    const middlewareHandler = this.handler();
+
+    app.use(mcpPath, middlewareHandler);
+    app.use(`${mcpPath}/*`, middlewareHandler);
+    app.get(
+      mcpDemoPath,
+      createMcpConnectionDemoHandler({
+        serverName: name,
+        serverVersion: version,
+        mcpPath,
+        helloWorld,
+      })
+    );
+    return this;
   }
 
   /**
@@ -151,10 +181,7 @@ export class FastHonoMcp extends ModalityFastMCP {
           }, headers);
         }
 
-        return c.json(
-          { error: `Use ${this.mcpPath} for MCP requests` },
-          400
-        );
+        return c.json({ error: `Use ${this.mcpPath} for MCP requests` }, 400);
       } catch (error) {
         this.logger.error(
           `FastHonoMcp (${url.pathname}) Middleware Error`,
@@ -165,16 +192,6 @@ export class FastHonoMcp extends ModalityFastMCP {
         return c.text(sseError(null, -32603, message), 500, SSE_HEADERS);
       }
     };
-  }
-
-  initHono(app: Hono, path: string = defaultMcpPath): this {
-    this.mcpPath = path;
-    const middlewareHandler = this.handler();
-
-    app.use(path, middlewareHandler);
-    app.use(`${path}/*`, middlewareHandler);
-
-    return this;
   }
 }
 
