@@ -7,15 +7,34 @@
  * Usage: /mcp-demo - returns MCP connection demo documentation and tool showcase
  */
 
+import type { FastMCPCompatible } from "./util_mcp_tools_converter.js";
+
 // ============================================
 // TOOL SHOWCASE DATA
 // ============================================
 
-interface ToolInfo {
+interface MCPClientInfo {
   name: string;
   description: string;
   connectionCode: string;
   type: "terminal" | "editor" | "platform";
+}
+
+interface MCPServerToolInfo {
+  name: string;
+  description?: string;
+  inputSchema?: any;
+  annotations?: any;
+}
+
+interface GroupedItem {
+  name: string;
+  description?: string;
+}
+
+interface ItemGroup {
+  groupName: string;
+  groupItems: GroupedItem[];
 }
 
 interface MCPConnectionConfig {
@@ -25,15 +44,16 @@ interface MCPConnectionConfig {
   mcpPath?: string;
   defaultFormat?: "json" | "markdown" | "html";
   helloWorld?: string;
+  middleware?: FastMCPCompatible;
+  customGroups?: ItemGroup[];
 }
 
 const defaultOutputFormat = "html";
 
 const connectAIShowcase = (
   serverName: string,
-  serverUrl: string,
   mcpPath: string = "/mcp"
-): Record<string, ToolInfo> => ({
+): Record<string, MCPClientInfo> => ({
   claudeCode: {
     name: "Claude Code",
     description: "Official Claude IDE tool for seamless development workflow",
@@ -82,16 +102,32 @@ const connectAIShowcase = (
 });
 
 // ============================================
+// SERVER TOOLS EXTRACTION
+// ============================================
+
+const getServerTools = (middleware?: FastMCPCompatible): MCPServerToolInfo[] => {
+  if (!middleware || !middleware.getTools) {
+    return [];
+  }
+
+  return middleware.getTools().map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
+  }));
+};
+
+// ============================================
 // DEMO CONTENT - MARKDOWN-BASED
 // ============================================
 
 const generateDemoDocumentation = (
   serverName: string,
-  serverUrl: string,
   mcpPath: string = "/mcp",
   helloWorld?: string
 ): string => {
-  const tools = connectAIShowcase(serverName, "{serverUrl}", mcpPath);
+  const mcpClients = connectAIShowcase(serverName, mcpPath);
   return `# MCP Connection Guide
 
 ${helloWorld ? `## Hello Prompt\n\n${helloWorld}\n` : ""}## How to Connect
@@ -102,24 +138,21 @@ ${helloWorld ? `## Hello Prompt\n\n${helloWorld}\n` : ""}## How to Connect
 
 ## Connection Codes
 
-${
-  Object.entries(tools)
-    .map(
-      ([, tool]) =>
-        `### ${tool.name}
+${Object.entries(mcpClients)
+  .map(
+    ([, mcpClient]) =>
+      `### ${mcpClient.name}
 \`\`\`
-${tool.connectionCode}
+${mcpClient.connectionCode}
 \`\`\``
-    )
-    .join("\n\n")
-}
+  )
+  .join("\n\n")}
 `;
 };
 
 // ============================================
 // HONO HANDLER
 // ============================================
-
 
 /**
  * Create MCP connection demo handler with server configuration
@@ -143,15 +176,20 @@ export const mcpConnectionDemoHandler = async (
   c: any,
   config?: MCPConnectionConfig
 ) => {
-  const format = c.req.query("format") || config?.defaultFormat || defaultOutputFormat;
+  const format =
+    c.req.query("format") || config?.defaultFormat || defaultOutputFormat;
   const serverName = config?.serverName || "mcp-server";
   const mcpPath = config?.mcpPath || "/mcp";
 
   // Get server URL: from config only (client-side will detect actual protocol)
   let serverUrl: string = config?.serverUrl || "";
 
-  const tools = connectAIShowcase(serverName, serverUrl, mcpPath);
-  const documentation = generateDemoDocumentation(serverName, serverUrl, mcpPath, config?.helloWorld);
+  const mcpClients = connectAIShowcase(serverName, mcpPath);
+  const documentation = generateDemoDocumentation(
+    serverName,
+    mcpPath,
+    config?.helloWorld
+  );
 
   // Handle different format requests
   if (format === "markdown" || format === "md") {
@@ -166,7 +204,7 @@ export const mcpConnectionDemoHandler = async (
   }
 
   if (format === "html") {
-    const htmlContent = generateHtmlPage(serverUrl, config, tools,  mcpPath);
+    const htmlContent = generateHtmlPage(serverUrl, config, mcpClients, mcpPath);
     return new Response(htmlContent, {
       status: 200,
       headers: {
@@ -178,11 +216,16 @@ export const mcpConnectionDemoHandler = async (
   }
 
   // Default: JSON format with complete data
+  const serverTools = getServerTools(config?.middleware);
   const demoData = {
     documentation,
-    tools: Object.entries(tools).map(([key, tool]) => ({
+    mcpClients: Object.entries(mcpClients).map(([key, mcpClient]) => ({
       id: key,
-      ...tool,
+      ...mcpClient,
+    })),
+    serverTools: serverTools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
     })),
     server: {
       name: serverName,
@@ -191,7 +234,8 @@ export const mcpConnectionDemoHandler = async (
       mcpPath: mcpPath,
     },
     metadata: {
-      toolCount: Object.keys(tools).length,
+      clientCount: Object.keys(mcpClients).length,
+      toolCount: serverTools.length,
       lastUpdated: new Date().toISOString(),
       format: "json",
       availableFormats: ["json", "markdown", "html"],
@@ -225,25 +269,55 @@ function escapeForJs(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
 }
 
+function markdownToHtml(markdown: string): string {
+  if (!markdown) return "";
+
+  let html = escapeHtml(markdown);
+
+  // Headers: # Title → <h3>Title</h3>
+  html = html.replace(/^### (.*?)$/gm, "<h3>$1</h3>");
+  html = html.replace(/^## (.*?)$/gm, "<h2>$1</h2>");
+  html = html.replace(/^# (.*?)$/gm, "<h1>$1</h1>");
+
+  // Bold: **text** → <strong>text</strong> (only properly paired)
+  html = html.replace(/\*\*([^\*]+)\*\*/g, "<strong>$1</strong>");
+
+  // Italic: *text* → <em>text</em> (require whitespace/boundaries around asterisks to avoid false matches)
+  html = html.replace(/(^|\s|\()\*([^\*\n]+)\*(?=\s|$|\.|\,|\)|:)/gm, "$1<em>$2</em>");
+
+  // Inline code: `code` → <code>code</code>
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  // Links: [text](url) → <a href="url">text</a>
+  html = html.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+  // Line breaks
+  html = html.replace(/\n/g, "<br>");
+
+  return html;
+}
+
 function generateHtmlPage(
   serverUrl: string,
   config?: MCPConnectionConfig,
-  tools?: Record<string, ToolInfo>,
+  mcpClientsArg?: Record<string, MCPClientInfo>,
   mcpPath: string = "/mcp"
 ): string {
-  const toolsToDisplay =
-    tools || connectAIShowcase(config?.serverName || "mcp-server", serverUrl, mcpPath);
-  const toolsHtml = Object.entries(toolsToDisplay)
+  const mcpClientsToDisplay =
+    mcpClientsArg || connectAIShowcase(config?.serverName || "mcp-server", mcpPath);
+  const serverTools = getServerTools(config?.middleware);
+
+  const mcpClientsHtml = Object.entries(mcpClientsToDisplay)
     .map(
-      ([, tool]) => `
-    <div class="tool-card">
-      <h3>${tool.name}</h3>
-      <p class="tool-type">${tool.type}</p>
-      <p class="tool-description">${tool.description}</p>
+      ([, mcpClient]) => `
+    <div class="mcp-client-card">
+      <h3>${mcpClient.name}</h3>
+      <p class="mcp-client-type">${mcpClient.type}</p>
+      <p class="mcp-client-description">${mcpClient.description}</p>
       <div class="connection-section">
         <label>Connection Code</label>
-        <pre class="code-block"><code>${escapeHtml(tool.connectionCode)}</code></pre>
-        <button class="copy-btn" onclick="copyToClipboard(\`${escapeForJs(tool.connectionCode)}\`)">
+        <pre class="code-block"><code>${escapeHtml(mcpClient.connectionCode)}</code></pre>
+        <button class="copy-btn" onclick="copyToClipboard(\`${escapeForJs(mcpClient.connectionCode)}\`)">
           Copy
         </button>
       </div>
@@ -251,6 +325,20 @@ function generateHtmlPage(
   `
     )
     .join("\n");
+
+  const serverToolsHtml =
+    serverTools.length > 0
+      ? serverTools
+          .map(
+            (tool) => `
+    <div class="server-tool-card">
+      <h3>${tool.name}</h3>
+      ${tool.description ? `<div class="tool-description">${markdownToHtml(tool.description)}</div>` : ""}
+    </div>
+  `
+          )
+          .join("\n")
+      : "";
 
   return `
 <!DOCTYPE html>
@@ -341,7 +429,7 @@ function generateHtmlPage(
       gap: 2rem;
     }
 
-    .tool-card {
+    .mcp-client-card {
       border: 1px solid #e0e0e0;
       border-radius: 8px;
       padding: 1.5rem;
@@ -349,19 +437,96 @@ function generateHtmlPage(
       background: white;
     }
 
-    .tool-card:hover {
+    .mcp-client-card:hover {
       border-color: #667eea;
       box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
       transform: translateY(-2px);
     }
 
-    .tool-card h3 {
+    .mcp-client-card h3 {
       color: #333;
       margin-bottom: 0.5rem;
       font-size: 1.3rem;
     }
 
-    .tool-type {
+    .server-tool-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1.5rem;
+      background: white;
+      border-left: 4px solid #764ba2;
+    }
+
+    .server-tool-card h3 {
+      color: #333;
+      margin-bottom: 0.5rem;
+      font-size: 1.1rem;
+    }
+
+    .tool-description {
+      color: #666;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .tool-description strong {
+      color: #333;
+      font-weight: 600;
+    }
+
+    .tool-description em {
+      font-style: italic;
+      color: #555;
+    }
+
+    .tool-description code {
+      background: #f5f5f5;
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.85rem;
+      color: #d63384;
+      border: 1px solid #e0e0e0;
+    }
+
+    .tool-description a {
+      color: #667eea;
+      text-decoration: none;
+      border-bottom: 1px solid #667eea;
+    }
+
+    .tool-description a:hover {
+      color: #764ba2;
+      border-bottom-color: #764ba2;
+    }
+
+    .tool-description h1,
+    .tool-description h2,
+    .tool-description h3 {
+      color: #333;
+      margin: 0.5rem 0 0.25rem 0;
+      font-weight: 600;
+    }
+
+    .tool-description h1 {
+      font-size: 1.1rem;
+    }
+
+    .tool-description h2 {
+      font-size: 1rem;
+    }
+
+    .tool-description h3 {
+      font-size: 0.95rem;
+    }
+
+    .tool-description br {
+      content: "";
+      display: block;
+      margin: 0.25rem 0;
+    }
+
+    .mcp-client-type {
       display: inline-block;
       background: #667eea;
       color: white;
@@ -373,7 +538,7 @@ function generateHtmlPage(
       margin-bottom: 1rem;
     }
 
-    .tool-description {
+    .mcp-client-description {
       color: #666;
       margin-bottom: 1.5rem;
       line-height: 1.6;
@@ -506,9 +671,46 @@ function generateHtmlPage(
       <div class="tools-section">
         <h2>Connect your AI assistant</h2>
         <div class="tools-grid">
-          ${toolsHtml}
+          ${mcpClientsHtml}
         </div>
       </div>
+
+      ${
+        serverToolsHtml
+          ? `<div class="tools-section">
+        <h2>Server Tools</h2>
+        <div class="tools-grid">
+          ${serverToolsHtml}
+        </div>
+      </div>`
+          : ""
+      }
+
+      ${
+        config?.customGroups && config.customGroups.length > 0
+          ? config.customGroups
+              .map(
+                (group) => `
+      <div class="tools-section">
+        <h2>${group.groupName}</h2>
+        <div class="tools-grid">
+          ${group.groupItems
+            .map(
+              (item) => `
+          <div class="server-tool-card">
+            <h3>${item.name}</h3>
+            ${item.description ? `<div class="tool-description">${markdownToHtml(item.description)}</div>` : ""}
+          </div>
+        `
+            )
+            .join("\n")}
+        </div>
+      </div>
+    `
+              )
+              .join("\n")
+          : ""
+      }
     </div>
 
     <footer>
@@ -576,4 +778,3 @@ function generateHtmlPage(
 </html>
   `.trim();
 }
-

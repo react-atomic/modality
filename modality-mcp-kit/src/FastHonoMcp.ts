@@ -87,6 +87,7 @@ export class FastHonoMcp extends ModalityFastMCP {
         serverVersion: version,
         mcpPath,
         helloWorld,
+        middleware: this,
       })
     );
     return this;
