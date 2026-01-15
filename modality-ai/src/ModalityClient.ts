@@ -90,6 +90,38 @@ class ModalityClientImpl {
     }
   }
 
+  /**
+   * Close transport and kill subprocess (for stdio transports only)
+   * Useful for one-off CLI operations where the subprocess should not persist
+   */
+  private async closeTransportAndKillProcess(transport: Transport): Promise<void> {
+    // Close the transport connection
+    await transport.close();
+
+    // For stdio transports, forcefully kill the subprocess if it's still running
+    if (this.transportConfig.type === "stdio") {
+      const stdioBased = transport as any;
+      const pid = stdioBased.pid;
+      if (pid) {
+        try {
+          // Send SIGTERM first, wait a bit, then SIGKILL if needed
+          process.kill(pid, "SIGTERM");
+          // Give it a moment to clean up
+          await new Promise(resolve => setTimeout(resolve, 50));
+          // Check if still running by trying SIGKILL
+          try {
+            process.kill(pid, 0); // Just check if process exists
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // Process already gone, that's fine
+          }
+        } catch {
+          // Process already gone or error killing - that's fine
+        }
+      }
+    }
+  }
+
   public async call(
     method: string,
     params?: any,
@@ -132,6 +164,56 @@ class ModalityClientImpl {
     }
     this.client.close();
     return result;
+  }
+
+  /**
+   * Call a tool once and kill the subprocess (for stdio transports only)
+   * Useful for one-off CLI operations where the subprocess should not persist
+   */
+  public async callOnceAndKill(
+    method: string,
+    params?: any,
+    autoParse: boolean = true
+  ): Promise<any> {
+    let transport: Transport | null = null;
+    try {
+      const client = this.client;
+      transport = this.createTransport();
+      await client.connect(transport);
+      const result = await client.callTool(
+        {
+          name: method,
+          arguments: params,
+        },
+        undefined,
+        { timeout: this.timeout }
+      );
+      // Kill subprocess after call
+      await this.closeTransportAndKillProcess(transport);
+      // Close client
+      client.close();
+      if (autoParse) {
+        return this.parseContent(result);
+      } else {
+        return result;
+      }
+    } catch (error) {
+      if (transport) {
+        try {
+          await this.closeTransportAndKillProcess(transport);
+        } catch (closeError) {
+          // Ignore close errors
+        }
+      }
+      try {
+        this.client.close();
+      } catch {
+        // Ignore close errors
+      }
+      const transportId = this.getTransportIdentifier();
+      logger.error(`${transportId}-callOnceAndKill-failed`, error);
+      throw error;
+    }
   }
 
   public callStream(

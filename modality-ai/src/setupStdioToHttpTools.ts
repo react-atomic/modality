@@ -12,6 +12,7 @@ export interface StdioToHttpOptions {
   env?: Record<string, string>;
   pkg?: string;
   timeout?: number;
+  quiet?: boolean; // Suppress subprocess output (stderr and debug messages)
 }
 
 /**
@@ -76,6 +77,7 @@ export const createStdioToHttpClient = (
     env: optionEnv,
     pkg,
     timeout = 120000,
+    quiet = false,
   } = options || {};
 
   const args = pkg ? [pkg, ...optionArgs] : optionArgs;
@@ -87,11 +89,19 @@ export const createStdioToHttpClient = (
     ...(optionEnv || {}),
   };
 
+  // If quiet mode is enabled, suppress debug output
+  if (quiet) {
+    // Set environment variables to suppress subprocess output
+    env.QUIET = "true";
+    env.DEBUG = ""; // Suppress any debug logging
+  }
+
   const client = ModalityClient.stdio(
     {
       command,
       args,
       env,
+      stderr: quiet ? "ignore" : "inherit", // Suppress stderr output in quiet mode
     },
     timeout
   );
