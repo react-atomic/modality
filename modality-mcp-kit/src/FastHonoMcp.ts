@@ -129,6 +129,7 @@ export class FastHonoMcp extends ModalityFastMCP {
       "Access-Control-Allow-Methods": "POST, OPTIONS, DELETE",
       "Access-Control-Allow-Headers":
         "content-type,mcp-protocol-version,mcp-session-id",
+      "Access-Control-Expose-Headers": "mcp-session-id",
       "Access-Control-Max-Age": "86400",
     };
   }
