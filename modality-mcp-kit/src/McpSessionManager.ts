@@ -6,6 +6,7 @@ export interface McpSession {
   id: string;
   createdAt: Date;
   lastActivity: Date;
+  protocolVersion?: string;
 }
 
 export class McpSessionManager {
@@ -39,6 +40,16 @@ export class McpSessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.lastActivity = new Date();
+    }
+  }
+
+  /**
+   * Set protocol version for a session
+   */
+  setProtocolVersion(sessionId: string, protocolVersion: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.protocolVersion = protocolVersion;
     }
   }
 

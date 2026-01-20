@@ -27,7 +27,7 @@ export class JSONRPCUtils {
   /**
    * Validate a JSON-RPC message (supports batch requests)
    */
-  static validateMessage(message: any): JSONRPCValidationResult {
+  static validateBatchMessage(message: any): JSONRPCValidationResult {
     // Handle batch requests
     if (Array.isArray(message)) {
       if (message.length === 0) {
@@ -54,9 +54,9 @@ export class JSONRPCUtils {
         message,
         messageType: "batch",
       };
+    } else {
+      return this.validateSingleMessage(message);
     }
-
-    return this.validateSingleMessage(message);
   }
 
   /**

@@ -25,22 +25,18 @@
  */
 
 import type { MiddlewareHandler, Hono } from "hono";
-import { ModalityFastMCP } from "./util_mcp_tools_converter.js";
-import { createMcpConnectionDemoHandler } from "./util_mcp_connection_demo.js";
-import {
-  JSONRPCManager,
-  type JSONRPCResponse,
-  getLoggerInstance,
-} from "modality-kit";
+import { JSONRPCManager, getLoggerInstance } from "modality-kit";
+import { ModalityFastMCP } from "./util_mcp_tools_converter";
+import { createMcpConnectionDemoHandler } from "./util_mcp_connection_demo";
 import {
   sseNotification,
   sseError,
   SSE_HEADERS,
   createSSEStream,
   type SSEStreamWriter,
-} from "./sse-wrapper.js";
-import { McpSessionManager } from "./McpSessionManager.js";
-import { handleToolCall } from "./handlers/tools-call-handler.js";
+} from "./sse-wrapper";
+import { McpSessionManager } from "./McpSessionManager";
+import { handleToolCall } from "./handlers/tools-call-handler";
 
 export interface FastHonoMcpConfig extends Record<string, unknown> {
   name: string;
@@ -52,7 +48,7 @@ export interface FastHonoMcpConfig extends Record<string, unknown> {
 
 const defaultMcpPath = "/mcp";
 const defaultMcpDemoPath = "/";
-const mcpSchemaVersion = "2025-11-25";
+const defaultMcpSchemaVersion = "2025-11-25";
 
 // Initialize FastMCP instance for internal use (NO SERVER)
 
@@ -178,17 +174,25 @@ export class FastHonoMcp extends ModalityFastMCP {
           const sessionId = this.ensureSession(requestSessionId);
           c.header("mcp-session-id", sessionId);
 
-          const bodyText = await c.req.text();
-          this.logger.info("MCP Middleware Received Body", { bodyText });
+          const requestData = await c.req.json();
+          const requestProtocolVersion = requestData?.params?.protocolVersion;
+          this.logger.info("MCP Middleware Received Body", {
+            requestData,
+            sessionId,
+          });
+
+          // Store protocol version in session if provided
+          if (requestProtocolVersion) {
+            this.sessions.setProtocolVersion(sessionId, requestProtocolVersion);
+          }
 
           // Handle notifications/initialized
           try {
-            const requestData = JSON.parse(bodyText);
             if (requestData?.method === "notifications/initialized") {
               Object.entries(SSE_HEADERS).forEach(([key, value]) => {
                 c.header(key, value);
               });
-              return c.text(sseNotification(), 200);
+              return c.text(sseNotification(), 202);
             }
           } catch {
             // Not valid JSON, continue with normal processing
@@ -200,17 +204,16 @@ export class FastHonoMcp extends ModalityFastMCP {
             ...corsHeaders,
           };
           return createSSEStream(async (writer: SSEStreamWriter) => {
-            const result =
-              await createJsonRpcManager(this).validateMessage(bodyText);
-            await writer.send(result as unknown as JSONRPCResponse);
+            const result = await createJsonRpcManager(
+              this,
+              sessionId
+            ).validateMessage(requestData);
+            await writer.send(result);
             await writer.close();
           }, responseHeaders);
         }
 
-        return c.json(
-          { error: `Use ${this.mcpPath} for MCP requests` },
-          400
-        );
+        return c.json({ error: `Use ${this.mcpPath} for MCP requests` }, 400);
       } catch (error) {
         this.logger.error(
           `FastHonoMcp (${url.pathname}) Middleware Error`,
@@ -233,7 +236,10 @@ class HonoJSONRPCManager extends JSONRPCManager<any> {
   }
 }
 
-function createJsonRpcManager(middleware: FastHonoMcp): HonoJSONRPCManager {
+function createJsonRpcManager(
+  middleware: FastHonoMcp,
+  sessionId: string
+): HonoJSONRPCManager {
   const mcpTools = middleware.getTools();
   const mcpPrompts = middleware.getPrompts();
   const jsonrpc = new HonoJSONRPCManager();
@@ -250,9 +256,14 @@ function createJsonRpcManager(middleware: FastHonoMcp): HonoJSONRPCManager {
         throw new Error("Missing required parameter: protocolVersion");
       }
 
+      // Get protocol version from session or use default
+      const session = middleware.sessions.get(sessionId);
+      const responseProtocolVersion =
+        session?.protocolVersion || defaultMcpSchemaVersion;
+
       // Return valid InitializeResult
       return {
-        protocolVersion: mcpSchemaVersion,
+        protocolVersion: responseProtocolVersion,
         capabilities: {
           tools: { listChanged: true },
           ...(mcpPrompts.length > 0 && { prompts: { listChanged: true } }),

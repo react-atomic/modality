@@ -302,7 +302,7 @@ export class WebSocketClient {
               `deserialize returned null or undefined ${event.data}`
             );
           }
-          const validMessage = JSONRPCUtils.validateMessage(message);
+          const validMessage = JSONRPCUtils.validateBatchMessage(message);
           if (validMessage.valid) {
             const message = validMessage.message as JSONRPCRequest;
             if (message.method === "server.connected") {

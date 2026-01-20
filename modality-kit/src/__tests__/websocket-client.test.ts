@@ -23,7 +23,7 @@ mock.module("../util_logger", () => ({
 mock.module("../JSONRPCUtils", () => ({
   JSONRPCUtils: {
     deserialize: (data: string) => JSON.parse(data),
-    validateMessage: (message: any) => ({
+    validateBatchMessage: (message: any) => ({
       valid: true,
       message,
       error: null,

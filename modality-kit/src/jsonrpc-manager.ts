@@ -387,7 +387,7 @@ export abstract class JSONRPCManager<TContext> extends JSONRPCCall {
   public async validateMessage(
     data: string | Buffer | Record<string, any>,
     options: any = {}
-  ): Promise<void> {
+  ): Promise<any> {
     try {
       // Parse message
       const message = JSONRPCUtils.deserialize(data);
@@ -397,7 +397,7 @@ export abstract class JSONRPCManager<TContext> extends JSONRPCCall {
       }
 
       // Process the message
-      const validation = JSONRPCUtils.validateMessage(message);
+      const validation = JSONRPCUtils.validateBatchMessage(message);
       if (!validation.valid) {
         const errorResponse = JSONRPCUtils.createErrorResponse(
           validation.error!,
