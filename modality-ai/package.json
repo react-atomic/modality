@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "name": "modality-ai",
   "repository": {
     "type": "git",
@@ -15,12 +15,12 @@
     "modality-mcp-kit": "^1.0.0"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.5",
-    "ai": "^6.0.14",
+    "@ai-sdk/google": "^3.0.18",
+    "ai": "^6.0.64",
     "ollama-ai-provider": "^1.2.0"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.5",
+    "@types/bun": "^1.3.8",
     "modality-bun-kit": "^0.0.2",
     "typescript": "^5.9.3"
   },

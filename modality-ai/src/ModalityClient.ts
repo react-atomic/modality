@@ -19,8 +19,6 @@ import type { ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
 const clientName = "modality-client";
 const logger = getLoggerInstance(clientName);
 
-export type TransportType = "http" | "stdio" | "sse";
-
 export interface HttpTransportConfig {
   type: "http";
   url: string;
@@ -47,6 +45,8 @@ class ModalityClientImpl {
   private client: Client;
   private transportConfig: TransportConfig;
   private timeout: number;
+  private transport: Transport | null = null;
+  private connected: boolean = false;
 
   constructor(config: TransportConfig, timeout: number = 60000) {
     this.client = new Client({
@@ -55,6 +55,23 @@ class ModalityClientImpl {
     });
     this.transportConfig = config;
     this.timeout = timeout;
+  }
+
+  private async getOrCreateTransport(): Promise<Transport> {
+    if (!this.transport || !this.connected) {
+      // Close orphaned transport if exists but not connected
+      if (this.transport) {
+        try {
+          await this.transport.close();
+        } catch {
+          // Ignore close errors on orphaned transport
+        }
+      }
+      this.transport = this.createTransport();
+      await this.client.connect(this.transport);
+      this.connected = true;
+    }
+    return this.transport;
   }
 
   private createTransport(): Transport {
@@ -128,10 +145,8 @@ class ModalityClientImpl {
     autoParse: boolean = true
   ): Promise<any> {
     try {
-      const client = this.client;
-      const transport = this.createTransport();
-      await client.connect(transport);
-      const result = await client.callTool(
+      await this.getOrCreateTransport();
+      const result = await this.client.callTool(
         {
           name: method,
           arguments: params,
@@ -139,15 +154,37 @@ class ModalityClientImpl {
         undefined,
         { timeout: this.timeout }
       );
-      if (autoParse) {
-        return this.parseContent(result);
-      } else {
-        return result;
-      }
+      return autoParse ? this.parseContent(result) : result;
     } catch (error) {
+      // Reset connection state on error so next call attempts reconnect
+      this.connected = false;
       const transportId = this.getTransportIdentifier();
       logger.error(`${transportId}-call-failed`, error);
-      throw error; // Re-throw the error so VsCodeLmProvider can handle it
+      throw error;
+    }
+  }
+
+  /**
+   * Internal method for one-off calls with cleanup
+   * @param killProcess - If true, forcefully kill subprocess (for stdio transports)
+   */
+  private async callOnceInternal(
+    method: string,
+    params: any,
+    autoParse: boolean,
+    killProcess: boolean
+  ): Promise<any> {
+    try {
+      return await this.call(method, params, autoParse);
+    } finally {
+      if (killProcess && this.transport) {
+        try {
+          await this.closeTransportAndKillProcess(this.transport);
+        } catch {
+          // Ignore close errors
+        }
+      }
+      this.close();
     }
   }
 
@@ -156,14 +193,7 @@ class ModalityClientImpl {
     params?: any,
     autoParse: boolean = true
   ): Promise<any> {
-    let result;
-    try {
-      result = await this.call(method, params, autoParse);
-    } catch (error) {
-      this.client.close();
-    }
-    this.client.close();
-    return result;
+    return this.callOnceInternal(method, params, autoParse, false);
   }
 
   /**
@@ -175,45 +205,7 @@ class ModalityClientImpl {
     params?: any,
     autoParse: boolean = true
   ): Promise<any> {
-    let transport: Transport | null = null;
-    try {
-      const client = this.client;
-      transport = this.createTransport();
-      await client.connect(transport);
-      const result = await client.callTool(
-        {
-          name: method,
-          arguments: params,
-        },
-        undefined,
-        { timeout: this.timeout }
-      );
-      // Kill subprocess after call
-      await this.closeTransportAndKillProcess(transport);
-      // Close client
-      client.close();
-      if (autoParse) {
-        return this.parseContent(result);
-      } else {
-        return result;
-      }
-    } catch (error) {
-      if (transport) {
-        try {
-          await this.closeTransportAndKillProcess(transport);
-        } catch (closeError) {
-          // Ignore close errors
-        }
-      }
-      try {
-        this.client.close();
-      } catch {
-        // Ignore close errors
-      }
-      const transportId = this.getTransportIdentifier();
-      logger.error(`${transportId}-callOnceAndKill-failed`, error);
-      throw error;
-    }
+    return this.callOnceInternal(method, params, autoParse, true);
   }
 
   public callStream(
@@ -221,78 +213,69 @@ class ModalityClientImpl {
     params?: any,
     callback?: (p: any) => void
   ): ReadableStream {
-    try {
-      const client = this.client;
-
-      // Streaming is currently only supported for HTTP transport
-      if (this.transportConfig.type !== "http") {
-        throw new Error(
-          `Streaming not supported for ${this.transportConfig.type} transport`
-        );
-      }
-
-      const url = (this.transportConfig as HttpTransportConfig).url;
-      const stream = new ReadableStream<string>({
-        async start(controller) {
-          try {
-            const streamingTransport = new StreamingMCPTransportWrapper(
-              url,
-              (content: string) => controller.enqueue(content)
-            );
-            await client.connect(streamingTransport);
-            const content = await client.callTool({
-              name: method,
-              arguments: params,
-            });
-            await streamingTransport.close();
-            controller.close();
-            callback?.(content);
-          } catch (error) {
-            logger.error("Streaming error:", error);
-            controller.error(error);
-          }
-        },
-      });
-      return stream;
-    } catch (error) {
-      const transportId = this.getTransportIdentifier();
-      logger.error(`${transportId}-stream-failed`, error);
-      const errorStream = new ReadableStream<string>({
-        start(controller) {
-          controller.enqueue(
-            `Error: ${error instanceof Error ? error.message : String(error)}`
-          );
-          controller.close();
-        },
-      });
-      return errorStream;
+    // Streaming is currently only supported for HTTP transport
+    if (this.transportConfig.type !== "http") {
+      throw new Error(
+        `Streaming not supported for ${this.transportConfig.type} transport`
+      );
     }
+
+    const client = this.client;
+    const url = (this.transportConfig as HttpTransportConfig).url;
+    const transportId = this.getTransportIdentifier();
+
+    return new ReadableStream<string>({
+      async start(controller) {
+        try {
+          const streamingTransport = new StreamingMCPTransportWrapper(
+            url,
+            (content: string) => controller.enqueue(content)
+          );
+          await client.connect(streamingTransport);
+          const content = await client.callTool({
+            name: method,
+            arguments: params,
+          });
+          await streamingTransport.close();
+          controller.close();
+          callback?.(content);
+        } catch (error) {
+          logger.error(`${transportId}-stream-failed`, error);
+          controller.error(error);
+        }
+      },
+    });
   }
 
   public close(): void {
     this.client.close();
+    this.connected = false;
+    this.transport = null;
   }
 
   public async listTools(): Promise<ListToolsResult> {
     try {
-      const client = this.client;
-      const transport = this.createTransport();
-      await client.connect(transport);
-      const result = await client.listTools();
+      await this.getOrCreateTransport();
+      const result = await this.client.listTools();
       return result;
     } catch (error) {
+      this.connected = false;
       const transportId = this.getTransportIdentifier();
       logger.error(`${transportId}-listTools-failed`, error);
       throw error;
     }
   }
 
-  public parseContent(toolResult: any): any {
+  public parseContent(toolResult: any): unknown {
     try {
-      const obj = JSON.parse(toolResult.content[0].text);
-      return obj;
-    } catch (error) {
-      return toolResult.content[0].text;
+      const content = toolResult?.content?.[0];
+      if (content?.type === "text" && content.text) {
+        return JSON.parse(content.text);
+      }
+      return content ?? toolResult;
+    } catch {
+      const content = toolResult?.content?.[0];
+      return content?.text ?? content ?? toolResult;
     }
   }
 }
