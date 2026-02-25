@@ -6,7 +6,7 @@ export {
 export { ModalityClient } from "./ModalityClient";
 export {
   setupStdioToHttpTools,
-  createStdioToHttpClient,
+  createStdioClient,
 } from "./setupStdioToHttpTools";
 export type { ModalityClientInstance } from "./ModalityClient";
-export type { StdioToHttpOptions } from "./setupStdioToHttpTools";
+export type { StdioClientOptions } from "./setupStdioToHttpTools";

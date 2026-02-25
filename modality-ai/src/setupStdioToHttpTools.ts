@@ -6,7 +6,7 @@ import {
 } from "modality-mcp-kit";
 import { ModalityClient, type ModalityClientInstance } from "./ModalityClient";
 
-export interface StdioToHttpOptions {
+export interface StdioClientOptions {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -68,8 +68,8 @@ function jsonSchemaToZod(schema: any): z.ZodType<any> {
   }
 }
 
-export const createStdioToHttpClient = (
-  options?: StdioToHttpOptions
+export const createStdioClient = (
+  options?: StdioClientOptions
 ): ModalityClientInstance => {
   const {
     command = "bunx",
