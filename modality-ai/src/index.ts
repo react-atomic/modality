@@ -10,3 +10,7 @@ export {
 } from "./setupStdioToHttpTools";
 export type { ModalityClientInstance } from "./ModalityClient";
 export type { StdioClientOptions } from "./setupStdioToHttpTools";
+export {
+  CLIBrowserOAuthProvider,
+  urlStorageKey,
+} from "./mcp-oauth-provider";
