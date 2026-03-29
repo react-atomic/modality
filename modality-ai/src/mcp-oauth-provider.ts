@@ -31,14 +31,11 @@ interface CLIBrowserOAuthProviderOptions {
    */
   noOpen?: boolean;
   /**
-   * Key used to namespace the persisted OAuth cache for this server.
-   * Defaults to a short hash of the server URL so each MCP server gets its
-   * own cache entry and re-runs skip dynamic registration entirely.
-   *
-   * Pass an explicit string (e.g. "figma") for a human-readable cache name.
+   * MCP server URL used to derive a unique cache key via urlStorageKey().
+   * Each server gets its own cache entry so re-runs skip dynamic registration.
    * Pass null to disable persistence entirely.
    */
-  storageKey?: string | null;
+  serverUrl?: string | null;
 }
 
 // Persisted shape written to ~/.cache/inspect-mcp/<key>.json
@@ -58,7 +55,7 @@ interface PersistedState {
  * and the browser prompt (until the token expires).
  *
  * Usage:
- *   const provider = new CLIBrowserOAuthProvider({ clientName: "my-cli", storageKey: "figma" });
+ *   const provider = new CLIBrowserOAuthProvider({ clientName: "my-cli", serverUrl: "https://mcp.figma.com/mcp" });
  *   const transport = new StreamableHTTPClientTransport(url, { authProvider: provider });
  *   const client = new Client(...);
  *
@@ -93,10 +90,10 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     this._noOpen = options.noOpen ?? false;
 
     // Resolve cache file path
-    if (options.storageKey === null) {
+    if (options.serverUrl === null) {
       this._cachePath = null;
     } else {
-      const key = options.storageKey ?? "default";
+      const key = options.serverUrl ? urlStorageKey(options.serverUrl) : "default";
       const dir = join(homedir(), ".cache", "counter");
       mkdirSync(dir, { recursive: true });
       this._cachePath = join(dir, `${key}.json`);
@@ -372,6 +369,6 @@ function openBrowser(url: string): void {
 }
 
 /** Short stable hash of a string — used to derive a cache file name from a URL. */
-export function urlStorageKey(url: string): string {
+function urlStorageKey(url: string): string {
   return createHash("sha1").update(url).digest("hex").slice(0, 12);
 }
