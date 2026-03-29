@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { OAuthClientProvider, OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { OAuthClientProvider, OAuthDiscoveryState, AddClientAuthentication } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
@@ -19,9 +19,7 @@ interface CLIBrowserOAuthProviderOptions {
   clientId?: string;
   /**
    * Port for the local callback server.
-   * 0 (default) picks a random available port.
-   * Use a fixed port when registering an OAuth app manually so the redirect
-   * URI stays stable across runs (e.g. callbackPort: 9876).
+   * Defaults to 9876 for a stable redirect_uri across runs.
    */
   callbackPort?: number;
   /**
@@ -37,6 +35,27 @@ interface CLIBrowserOAuthProviderOptions {
    */
   serverUrl?: string | null;
 }
+
+/**
+ * Per-server OAuth client identity override.
+ * Some MCP servers whitelist specific client_name values during dynamic
+ * registration — use this map to supply the expected identity automatically.
+ */
+interface ServerClientIdentity {
+  client_name: string;
+  client_uri: string;
+}
+
+/**
+ * Hostname-suffix → identity whitelist.
+ * A key of "figma.com" matches "mcp.figma.com", "api.figma.com", etc.
+ */
+const SERVER_IDENTITY_WHITELIST: Record<string, ServerClientIdentity> = {
+  "figma.com": {
+    client_name: "Claude Code",
+    client_uri: "https://claude.ai",
+  },
+};
 
 // Persisted shape written to ~/.cache/inspect-mcp/<key>.json
 interface PersistedState {
@@ -73,6 +92,7 @@ interface PersistedState {
  */
 export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   private readonly _clientName: string;
+  private readonly _serverIdentity: ServerClientIdentity | null;
   private readonly _noOpen: boolean;
   private readonly _cachePath: string | null;
   private _port: number;
@@ -88,6 +108,11 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   constructor(options: CLIBrowserOAuthProviderOptions = {}) {
     this._clientName = options.clientName ?? "mcp-cli";
     this._noOpen = options.noOpen ?? false;
+
+    // Resolve server-specific client identity from the whitelist
+    this._serverIdentity = options.serverUrl
+      ? resolveServerIdentity(options.serverUrl)
+      : null;
 
     // Resolve cache file path
     if (options.serverUrl === null) {
@@ -118,11 +143,22 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
 
     // Start server eagerly so redirectUrl is stable before the SDK calls
     // clientMetadata / redirectUrl getters during dynamic client registration.
+    // Default to port 9876 for a stable redirect_uri across runs — random ports
+    // cause re-registration every run and redirect_uri mismatch on token exchange.
     this._server = Bun.serve({
-      port: options.callbackPort ?? 0,
+      port: options.callbackPort ?? 9876,
       fetch: (req) => this._handleCallback(req),
     });
-    this._port = this._server.port ?? 0;
+    this._port = this._server.port ?? 9876;
+
+    // Invalidate cached clientInfo if its redirect_uris don't match the current
+    // redirectUrl — e.g. after switching --callback-port or fixing a broken cache.
+    if (this._clientInfo) {
+      const uris: string[] = (this._clientInfo as Record<string, unknown>).redirect_uris as string[] ?? [];
+      if (!uris.includes(this.redirectUrl)) {
+        this._clientInfo = undefined;
+      }
+    }
   }
 
   // ── OAuthClientProvider interface ──────────────────────────────────────────
@@ -132,10 +168,13 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   }
 
   get clientMetadata(): OAuthClientMetadata {
+    const identity = this._serverIdentity;
     return {
-      client_name: this._clientName,
+      client_name: identity?.client_name ?? this._clientName,
+      ...(identity?.client_uri ? { client_uri: identity.client_uri } : {}),
+      // Exact port in redirect_uri so token exchange matches registration.
       redirect_uris: [this.redirectUrl],
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
     };
@@ -176,6 +215,29 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     return this._codeVerifier;
   }
 
+  /**
+   * Custom client authentication for token exchange.
+   *
+   * Figma's dynamic registration returns `token_endpoint_auth_method: "none"` yet
+   * also issues a `client_secret`. The MCP SDK honours the registered
+   * `token_endpoint_auth_method` and therefore sends only `client_id`, which Figma
+   * rejects. When a `client_secret` is present we always send it as
+   * `client_secret_post` so the credentials reach Figma regardless of whatever
+   * auth-method string the registration response contained.
+   */
+  readonly addClientAuthentication: AddClientAuthentication = (
+    _headers: Headers,
+    params: URLSearchParams,
+  ): void => {
+    const info = this._clientInfo;
+    if (!info) return;
+    params.set("client_id", info.client_id);
+    const secret = (info as Record<string, unknown>).client_secret as string | undefined;
+    if (secret) {
+      params.set("client_secret", secret);
+    }
+  };
+
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
     const url = authorizationUrl.toString();
     if (this._noOpen) {
@@ -204,13 +266,10 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     return this._discoveryState;
   }
 
-  /** Remove all persisted state for this server (forces re-registration + re-auth on next run). */
+  /** Clear cached tokens only — forces browser re-auth on next run while keeping client registration. */
   clearCache(): void {
-    this._clientInfo = undefined;
     this._tokens = undefined;
-    if (this._cachePath) {
-      try { writeFileSync(this._cachePath, "{}"); } catch { /* ignore */ }
-    }
+    this._persistCache();
   }
 
   /** Stop the local callback HTTP server. Call once auth is complete. */
@@ -371,4 +430,24 @@ function openBrowser(url: string): void {
 /** Short stable hash of a string — used to derive a cache file name from a URL. */
 function urlStorageKey(url: string): string {
   return createHash("sha1").update(url).digest("hex").slice(0, 12);
+}
+
+/**
+ * Returns a whitelisted client identity for the given server URL, or null
+ * if none matches. Matching is hostname-suffix based: a key "figma.com"
+ * matches "mcp.figma.com", "api.figma.com", etc.
+ */
+function resolveServerIdentity(serverUrl: string): ServerClientIdentity | null {
+  let hostname: string;
+  try {
+    hostname = new URL(serverUrl).hostname;
+  } catch {
+    return null;
+  }
+  for (const [key, identity] of Object.entries(SERVER_IDENTITY_WHITELIST)) {
+    if (hostname === key || hostname.endsWith(`.${key}`)) {
+      return identity;
+    }
+  }
+  return null;
 }
