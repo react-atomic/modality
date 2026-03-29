@@ -1,5 +1,5 @@
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "name": "modality-ai",
   "repository": {
     "type": "git",
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.53",
-    "ai": "^6.0.140",
+    "ai": "^6.0.141",
     "ollama-ai-provider": "^1.2.0"
   },
   "devDependencies": {
@@ -35,7 +35,7 @@
   "scripts": {
     "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
     "build:types": "bun tsc -p ./",
-    "build:src": "bun build src/index.ts --outdir dist --external @modelcontextprotocol/sdk",
+    "build:src": "bun build src/index.ts --outdir dist --target node --external @modelcontextprotocol/sdk",
     "build": "bun run build:clean && bun run build:types && bun run build:src",
     "dev": "bunx concurrently 'bun --watch tsc  -p ./' 'bun build:src -- --watch --sourcemap=inline'",
     "test": "npm run build && bun test",
