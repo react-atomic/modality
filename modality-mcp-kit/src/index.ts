@@ -15,4 +15,5 @@ export {
   mcpProxyListHandler,
   mcpProxyCacheHandler,
   type McpProxyConfig,
+  type OAuthAllowAccessFn,
 } from "./util_mcp_proxy";

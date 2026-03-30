@@ -9,6 +9,10 @@
  */
 
 import { SimpleCache } from "modality-kit";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 // ============================================
 // MCP SERVER CONFIGURATION
@@ -222,8 +226,44 @@ function getAnyCacheForMethod(
 }
 
 // ============================================
+// OAUTH TOKEN HELPERS
+// ============================================
+
+function getOAuthCachePath(serverUrl: string): string {
+  const key = createHash("sha1").update(serverUrl).digest("hex").slice(0, 12);
+  return join(homedir(), ".cache", "counter", `${key}.json`);
+}
+
+function getStoredOAuthToken(serverUrl: string): string | null {
+  try {
+    const data = JSON.parse(readFileSync(getOAuthCachePath(serverUrl), "utf8"));
+    return data.tokens?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredOAuthTokens(serverUrl: string): boolean {
+  const cachePath = getOAuthCachePath(serverUrl);
+  try {
+    const data = JSON.parse(readFileSync(cachePath, "utf8"));
+    delete data.tokens;
+    writeFileSync(cachePath, JSON.stringify(data, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================
 // HONO HANDLERS
 // ============================================
+
+export type OAuthAllowAccessFn = (
+  serverUrl: string,
+  mcpName: string
+) => Promise<{ status: string; message?: string }>;
+
 
 /**
  * Hono handler for MCP proxy
@@ -231,7 +271,8 @@ function getAnyCacheForMethod(
  * @returns Response proxied from MCP server
  */
 export const mcpProxyHandler =
-  (MCP_SERVERS: McpProxyConfig) => async (c: any) => {
+  (MCP_SERVERS: McpProxyConfig, oauthAllowAccess?: OAuthAllowAccessFn) =>
+  async (c: any) => {
     const mcpName = c.req.param("mcpName");
 
     if (!mcpName) {
@@ -242,6 +283,48 @@ export const mcpProxyHandler =
         },
         400
       );
+    }
+
+    // Handle /_allow sub-route (OAuth access flow)
+    if (c.req.path.endsWith("/_allow")) {
+      const serverConfig = MCP_SERVERS[mcpName];
+      if (!serverConfig) {
+        return c.json(
+          { error: "MCP server not found", availableServers: Object.keys(MCP_SERVERS) },
+          404
+        );
+      }
+      if (!oauthAllowAccess) {
+        return c.json({ error: "OAuth not configured for this proxy" }, 501);
+      }
+      try {
+        const result = await oauthAllowAccess(serverConfig.url, mcpName);
+        return c.json(result);
+      } catch (err: any) {
+        return c.json(
+          { error: "OAuth failed", message: err.message },
+          500
+        );
+      }
+    }
+
+    // Handle /_clear-auth sub-route
+    if (c.req.path.endsWith("/_clear-auth")) {
+      const serverConfig = MCP_SERVERS[mcpName];
+      if (!serverConfig) {
+        return c.json(
+          { error: "MCP server not found", availableServers: Object.keys(MCP_SERVERS) },
+          404
+        );
+      }
+      const cleared = clearStoredOAuthTokens(serverConfig.url);
+      return c.json({
+        status: cleared ? "cleared" : "no_cache",
+        mcpName,
+        message: cleared
+          ? "OAuth tokens cleared"
+          : "No cached OAuth state found",
+      });
     }
 
     // Handle /_cache sub-routes (matched via app.use prefix routing)
@@ -318,10 +401,19 @@ export const mcpProxyHandler =
           }
         }
 
+        // Auto-inject stored OAuth token if no Authorization header present
+        if (!upstreamHeaders.authorization) {
+          const storedToken = getStoredOAuthToken(serverConfig.url);
+          if (storedToken) {
+            upstreamHeaders.authorization = `Bearer ${storedToken}`;
+          }
+        }
+
         try {
           const upstreamResponse = await fetch(serverConfig.url, {
             method: "GET",
             headers: upstreamHeaders,
+            signal: c.req.raw.signal,
           });
 
           // Forward response headers
@@ -367,11 +459,22 @@ export const mcpProxyHandler =
 
       // Regular GET - return server info
       const cache = getServerCache(mcpName);
+      const basePath = `/proxy/${mcpName}`;
       return c.json({
         mcpName,
-        ...serverConfig,
-        cacheKeys: cache.keys(),
-        cacheSize: cache.keys().length,
+        upstream: serverConfig.url,
+        description: serverConfig.description,
+        endpoints: {
+          sse: `${basePath} (GET, Accept: text/event-stream)`,
+          rpc: `${basePath} (POST)`,
+          allow: `${basePath}/_allow`,
+          clearAuth: `${basePath}/_clear-auth`,
+          cache: `${basePath}/_cache`,
+        },
+        cache: {
+          keys: cache.keys(),
+          size: cache.keys().length,
+        },
       });
     }
 
@@ -461,6 +564,15 @@ export const mcpProxyHandler =
             console.log(
               `[MCP-PROXY] Forwarding header: ${header}=${value.substring(0, 50)}`
             );
+          }
+        }
+
+        // Auto-inject stored OAuth token if no Authorization header present
+        if (!upstreamHeaders.authorization) {
+          const storedToken = getStoredOAuthToken(serverConfig.url);
+          if (storedToken) {
+            upstreamHeaders.authorization = `Bearer ${storedToken}`;
+            console.log(`[MCP-PROXY] Using stored OAuth token for ${mcpName}`);
           }
         }
 

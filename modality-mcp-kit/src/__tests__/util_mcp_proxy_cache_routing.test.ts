@@ -27,7 +27,7 @@ describe("mcpProxyHandler — /_cache routing", () => {
     const c = makeCtx("/proxy/myServer");
     const res: any = await handler(c);
     expect(res.data.mcpName).toBe("myServer");
-    expect(Array.isArray(res.data.cacheKeys)).toBe(true);
+    expect(Array.isArray(res.data.cache.keys)).toBe(true);
   });
 
   it("/_cache path returns empty keys after cache initialized", async () => {
