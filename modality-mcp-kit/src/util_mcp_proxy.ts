@@ -244,6 +244,26 @@ export const mcpProxyHandler =
       );
     }
 
+    // Handle /_cache sub-routes (matched via app.use prefix routing)
+    const cachePathMatch = c.req.path.match(/\/_cache(?:\/(.+))?$/);
+    if (cachePathMatch) {
+      const cache = serverCaches.get(mcpName);
+      if (!cache) {
+        return c.json({ error: "No cache for this MCP server", keys: [] });
+      }
+      const cacheKey = cachePathMatch[1]
+        ? decodeURIComponent(cachePathMatch[1])
+        : undefined;
+      if (cacheKey) {
+        const entry = cache.get(cacheKey, true);
+        if (!entry) {
+          return c.json({ error: "Cache key not found", cacheKey }, 404);
+        }
+        return c.json({ cacheKey, value: entry });
+      }
+      return c.json({ keys: cache.keys() });
+    }
+
     // Handle CORS preflight
     if (c.req.method === "OPTIONS") {
       return new Response(null, {
