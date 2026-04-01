@@ -256,6 +256,71 @@ function clearStoredOAuthTokens(serverUrl: string): boolean {
 }
 
 // ============================================
+// TOOL PREFETCH HELPERS
+// ============================================
+
+function parseToolsFromBody(body: string): any[] | null {
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed?.result?.tools) return parsed.result.tools;
+  } catch {
+    // Try SSE format
+    const lines = body.split("\n");
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const parsed = JSON.parse(line.substring(6));
+          if (parsed?.result?.tools) return parsed.result.tools;
+        } catch {}
+      }
+    }
+  }
+  return null;
+}
+
+async function prefetchAndCacheTools(
+  mcpName: string,
+  serverUrl: string,
+  cache: SimpleCache<string>,
+  storedToken?: string | null
+): Promise<{ tools: any[] | null; fromCache: boolean }> {
+  const cacheKey = "tools/list";
+
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    const dataLine = cached.match(/^data: (.+)$/m)?.[1] ?? cached;
+    return { tools: parseToolsFromBody(dataLine), fromCache: true };
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    };
+    if (storedToken) {
+      headers.authorization = `Bearer ${storedToken}`;
+    }
+
+    const response = await fetch(serverUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+
+    const body = await response.text();
+    const ttl = METHOD_TTL_MS["tools/list"];
+    const cacheValue = body.includes("event:") ? body : `event: message\ndata: ${body}\n\n`;
+    cache.set(cacheKey, cacheValue, ttl);
+    console.log(`[MCP-PROXY] Prefetched and cached tools/list for ${mcpName}`);
+
+    return { tools: parseToolsFromBody(body), fromCache: false };
+  } catch (e) {
+    console.error(`[MCP-PROXY] Failed to prefetch tools for ${mcpName}:`, e);
+    return { tools: null, fromCache: false };
+  }
+}
+
+// ============================================
 // HONO HANDLERS
 // ============================================
 
@@ -324,6 +389,23 @@ export const mcpProxyHandler =
         message: cleared
           ? "OAuth tokens cleared"
           : "No cached OAuth state found",
+      });
+    }
+
+    // Handle /_tools sub-route — prefetch and return cached tool list
+    if (c.req.path.endsWith("/_tools")) {
+      const serverConfig = MCP_SERVERS[mcpName];
+      if (!serverConfig) {
+        return c.json({ error: "MCP server not found", availableServers: Object.keys(MCP_SERVERS) }, 404);
+      }
+      const cache = getServerCache(mcpName);
+      const storedToken = getStoredOAuthToken(serverConfig.url);
+      const { tools, fromCache } = await prefetchAndCacheTools(mcpName, serverConfig.url, cache, storedToken);
+      return c.json({
+        mcpName,
+        fromCache,
+        count: tools?.length ?? 0,
+        tools: tools ?? [],
       });
     }
 
@@ -467,6 +549,7 @@ export const mcpProxyHandler =
         endpoints: {
           sse: `${basePath} (GET, Accept: text/event-stream)`,
           rpc: `${basePath} (POST)`,
+          tools: `${basePath}/_tools`,
           allow: `${basePath}/_allow`,
           clearAuth: `${basePath}/_clear-auth`,
           cache: `${basePath}/_cache`,
