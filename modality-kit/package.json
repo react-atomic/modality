@@ -1,5 +1,5 @@
 {
-  "version": "0.16.0",
+  "version": "0.16.1",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -13,9 +13,9 @@
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.24.2",
-    "modality-bun-kit": "^0.0.1",
-    "zod": "^4.3.5"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "modality-bun-kit": "^0.0.3",
+    "zod": "^4.3.6"
   },
   "exports": {
     "types": "./dist/types/index.d.ts",

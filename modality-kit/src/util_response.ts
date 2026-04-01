@@ -92,6 +92,13 @@ export function formatSuccessResponse(
   if (contetnBlock.length > 0) {
     result.content.push(...contetnBlock);
   }
+  if (process.env.DEBUG) {
+    const size = JSON.stringify(result).length;
+    result.content.push({
+      type: "text",
+      text: `Response size: ${size} bytes`,
+    });
+  }
   return result;
 }
 
