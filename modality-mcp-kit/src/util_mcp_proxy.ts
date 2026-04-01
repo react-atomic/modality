@@ -301,19 +301,52 @@ async function prefetchAndCacheTools(
       headers.authorization = `Bearer ${storedToken}`;
     }
 
+    // Step 1: initialize session (required by MCP protocol before tools/list)
+    const initResponse = await fetch(serverUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "mcp-proxy", version: "1.0" },
+        },
+      }),
+    });
+
+    if (!initResponse.ok) {
+      console.warn(`[MCP-PROXY] Initialize failed for ${mcpName} — status: ${initResponse.status}`);
+      return { tools: null, fromCache: false };
+    }
+
+    const sessionId = initResponse.headers.get("mcp-session-id");
+    if (sessionId) {
+      headers["mcp-session-id"] = sessionId;
+    }
+
+    // Step 2: fetch tools/list
     const response = await fetch(serverUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
     });
 
     const body = await response.text();
-    const ttl = METHOD_TTL_MS["tools/list"];
-    const cacheValue = body.includes("event:") ? body : `event: message\ndata: ${body}\n\n`;
-    cache.set(cacheKey, cacheValue, ttl);
-    console.log(`[MCP-PROXY] Prefetched and cached tools/list for ${mcpName}`);
+    const tools = parseToolsFromBody(body);
 
-    return { tools: parseToolsFromBody(body), fromCache: false };
+    if (response.ok && tools !== null) {
+      const ttl = METHOD_TTL_MS["tools/list"];
+      const cacheValue = body.includes("event:") ? body : `event: message\ndata: ${body}\n\n`;
+      cache.set(cacheKey, cacheValue, ttl);
+      console.log(`[MCP-PROXY] Prefetched and cached tools/list for ${mcpName}`);
+    } else {
+      console.warn(`[MCP-PROXY] Skipping cache for ${mcpName} tools/list — status: ${response.status}, tools parsed: ${tools !== null}`);
+    }
+
+    return { tools, fromCache: false };
   } catch (e) {
     console.error(`[MCP-PROXY] Failed to prefetch tools for ${mcpName}:`, e);
     return { tools: null, fromCache: false };
@@ -401,6 +434,10 @@ export const mcpProxyHandler =
       const cache = getServerCache(mcpName);
       const storedToken = getStoredOAuthToken(serverConfig.url);
       const { tools, fromCache } = await prefetchAndCacheTools(mcpName, serverConfig.url, cache, storedToken);
+      const namesOnly = c.req.query("names") !== undefined;
+      if (namesOnly) {
+        return c.json(tools?.map((t: any) => t.name) ?? []);
+      }
       return c.json({
         mcpName,
         fromCache,
