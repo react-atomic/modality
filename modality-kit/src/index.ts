@@ -42,5 +42,7 @@ export { ERROR_METHOD_NOT_FOUND } from "./jsonrpc-manager";
 export { WebSocketClient } from "./websocket-client";
 export { LruCache } from "./lruCache";
 export { SimpleCache } from "./simple-cache";
+export { isTestEnvironment } from "./isTestEnvironment";
+
 export type { SimpleCacheOptions } from "./simple-cache";
 export type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
