@@ -184,7 +184,7 @@ class ModalityClientImpl {
           // Ignore close errors
         }
       }
-      this.close();
+      await this.close();
     }
   }
 
@@ -247,7 +247,17 @@ class ModalityClientImpl {
     });
   }
 
-  public close(): void {
+  public async close(): Promise<void> {
+    // Close the transport first — for stdio transports this sends SIGTERM/SIGKILL
+    // to the subprocess. Skipping this leaves the child process alive as an orphan
+    // (ModalityClientImpl.close() used to null the reference without closing it).
+    if (this.transport) {
+      try {
+        await this.transport.close();
+      } catch {
+        // Ignore close errors
+      }
+    }
     this.client.close();
     this.connected = false;
     this.transport = null;
