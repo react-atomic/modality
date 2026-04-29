@@ -1,5 +1,5 @@
 {
-  "version": "0.17.0",
+  "version": "0.17.6",
   "name": "modality-kit",
   "repository": {
     "type": "git",
@@ -28,7 +28,7 @@
   "scripts": {
     "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
     "build:types": "bun tsc -p ./",
-    "build:src": "bun build src/index.ts --outdir dist",
+    "build:src": "bun build src/index.ts --outdir dist --target=node",
     "build": "bun run build:clean && bun run build:types && bun run build:src",
     "dev": "bunx concurrently 'bun --watch tsc  -p ./' 'bun build:src -- --watch --sourcemap=inline'",
     "test": "npm run build && bun test",

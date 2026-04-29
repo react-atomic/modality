@@ -55,30 +55,30 @@ export function recursiveScanForFiles(
 
         const fullPath = join(dir, entry);
         const relPath = relativePath ? `${relativePath}/${entry}` : entry;
+        const isDirectory = statSync(fullPath).isDirectory();
 
-        try {
-          const isDirectory = statSync(fullPath).isDirectory();
-
-          if (isSearchingForTarget) {
-            // Phase 1: Looking for target folder
-            if (isDirectory) {
-              scanDirectory(fullPath, relPath, entry !== targetFolderName);
-            }
-          } else if (isDirectory) {
-            // Phase 2: Inside target folder, recurse into subfolders if enabled
-            if (searchInSubfolders) {
-              scanDirectory(fullPath, relPath, false);
-            }
-          } else if ((!fileExtensions || extensionSet.has(extname(entry))) && fileNameFilter(entry)) {
-            // Collect matching files
-            files.push({ filename: relPath, fullPath });
+        if (isSearchingForTarget) {
+          // Phase 1: Looking for target folder
+          if (isDirectory) {
+            scanDirectory(fullPath, relPath, entry !== targetFolderName);
           }
-        } catch (e) {
-          // Ignore stat failures
+        } else if (isDirectory) {
+          // Phase 2: Inside target folder, recurse into subfolders if enabled
+          if (searchInSubfolders) {
+            scanDirectory(fullPath, relPath, false);
+          }
+        } else if (
+          (!fileExtensions || extensionSet.has(extname(entry))) &&
+          fileNameFilter(entry)
+        ) {
+          // Collect matching files
+          files.push({ filename: relPath, fullPath });
         }
       }
     } catch (e) {
-      // Ignore directory read errors
+      //  Only for debugging purposes, not throwing to allow partial results
+      //  To avoid invalid files breaking the entire scan.
+      //  console.error(e);
     }
   }
 
