@@ -46,3 +46,5 @@ export { isTestEnvironment } from "./isTestEnvironment";
 
 export type { SimpleCacheOptions } from "./simple-cache";
 export type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+export { recursiveScanForFiles, type ScannedFile } from "./recursiveScanForFiles";
