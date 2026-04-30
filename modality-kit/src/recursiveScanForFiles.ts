@@ -39,23 +39,25 @@ export function recursiveScanForFiles(
 
   // O(1) lookup instead of O(e) with .some()
   const extensionSet = new Set(fileExtensions);
+  const errors: Record<string, Error>[] = [];
 
   function scanDirectory(
     dir: string,
     relativePath: string = "",
     isSearchingForTarget: boolean = true
   ): void {
-    try {
-      const entries = readdirSync(dir);
-
-      for (const entry of entries) {
+    const entries = readdirSync(dir);
+    for (const entry of entries) {
+      try {
         if (excludePatterns.some((pattern) => entry.startsWith(pattern))) {
           continue;
         }
 
         const fullPath = join(dir, entry);
         const relPath = relativePath ? `${relativePath}/${entry}` : entry;
-        const isDirectory = statSync(fullPath).isDirectory();
+        const isDirectory = statSync(fullPath, {
+          throwIfNoEntry: false,
+        })?.isDirectory();
 
         if (isSearchingForTarget) {
           // Phase 1: Looking for target folder
@@ -74,14 +76,15 @@ export function recursiveScanForFiles(
           // Collect matching files
           files.push({ filename: relPath, fullPath });
         }
+      } catch (e) {
+        errors.push({ dir: e as Error });
       }
-    } catch (e) {
-      //  Only for debugging purposes, not throwing to allow partial results
-      //  To avoid invalid files breaking the entire scan.
-      //  console.error(e);
     }
   }
 
   scanDirectory(baseDir, "", true);
+  if (errors.length > 0) {
+    throw new Error(`Error scanning directory: ${JSON.stringify(errors)}`);
+  }
   return files.sort((a, b) => a.filename.localeCompare(b.filename));
 }
