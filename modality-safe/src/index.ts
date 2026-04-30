@@ -1,4 +1,5 @@
-import { join } from "path";
+import { join, relative } from "path";
+import ignore from "ignore";
 
 export interface LeakData {
   line: number;
@@ -132,28 +133,6 @@ function isSafePattern(
 }
 
 /**
- * Load ignore patterns from file (like .gitignore format)
- * @param {string} ignoreFilePath - Path to the ignore file
- * @returns {Promise<string[]>} Array of ignore patterns
- */
-const loadIgnoreFile = async (ignoreFilePath: string): Promise<string[]> => {
-  try {
-    const { readFile } = await import("fs/promises");
-    const content = await readFile(ignoreFilePath, "utf8");
-    const patterns = content
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(
-        (line) =>
-          line !== "" && !line.startsWith("#") && !line.startsWith("//")
-      );
-    return patterns;
-  } catch {
-    return [];
-  }
-};
-
-/**
  * Load custom whitelist from file
  * @param {string} whitelistPath - Path to the whitelist file
  * @returns {Promise<Set<string>>} Set of whitelisted items
@@ -215,37 +194,39 @@ const addLeaksToWhitelist = (
 };
 
 /**
- * Security Validation Tests
- *
- * This test suite ensures that no sensitive information is hardcoded in the source code.
- * It scans all TypeScript files for potential security issues including API keys and secrets.
+ * Recursively scan `dir` for source files, honoring `.gitignore` semantics
+ * (negation, anchoring, globs, directory rules) via the `ignore` package.
+ * Works in any environment including Docker images without git installed.
  */
 async function getAllSourceFiles(
   dir: string,
   ignoreFilePath?: string
 ): Promise<string[]> {
-  const { readdir } = await import("fs/promises");
+  const { readdir, readFile } = await import("fs/promises");
+
+  const ig = ignore();
+  if (ignoreFilePath) {
+    try {
+      ig.add(await readFile(ignoreFilePath, "utf8"));
+    } catch {
+      // Ignore file missing or unreadable — proceed with no gitignore rules
+    }
+  }
+
   const files: string[] = [];
-
-  // Load ignore patterns from file if provided
-  const ignorePatterns = ignoreFilePath
-    ? await loadIgnoreFile(ignoreFilePath)
-    : [];
-
-  // Combine default exclude patterns with loaded ignore patterns
-  const allExcludePatterns = [...EXCLUDE_PATTERNS, ...ignorePatterns];
 
   async function scanDirectory(currentDir: string) {
     const entries = await readdir(currentDir, { withFileTypes: true });
 
     for (const entry of entries) {
       const fullPath = join(currentDir, entry.name);
-      const relativePath = fullPath.replace(process.cwd() + "/", "");
+      const relativePath = relative(dir, fullPath);
 
-      // Skip excluded paths
-      if (
-        allExcludePatterns.some((pattern) => relativePath.includes(pattern))
-      ) {
+      if (!relativePath) continue;
+
+      if (ig.ignores(relativePath)) continue;
+
+      if (EXCLUDE_PATTERNS.some((pattern) => relativePath.includes(pattern))) {
         continue;
       }
 
