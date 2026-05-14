@@ -58,6 +58,8 @@ export interface AITool<
     readOnlyHint?: boolean;
     title?: string;
   };
+  /** MCP tool metadata forwarded verbatim in tools/list. Use 'anthropic/alwaysLoad': true to prevent deferral. */
+  _meta?: Record<string, unknown>;
   canAccess?: (auth: T) => boolean;
   description?: string;
   execute: (
