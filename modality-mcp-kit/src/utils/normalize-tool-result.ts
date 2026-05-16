@@ -16,7 +16,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/spec.types.js";
 import {
   isString,
-  isCallToolResult,
   looksLikeCallToolResult,
   isPlainObject,
   isNullOrUndefined,
