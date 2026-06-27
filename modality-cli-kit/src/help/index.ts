@@ -58,8 +58,18 @@ export {
 // Validator
 export {
   levenshtein,
+  fuzzySuggestion,
   knownFlags,
   rejectUnknownFlags,
   buildFlagRejector,
   DEFAULT_GLOBAL_FLAGS,
 } from "./validator";
+
+// Zod CLI
+export {
+  inferOptionType,
+  optionsToSchema,
+  parseCliArgs,
+  validateSubcommandArgs,
+  buildSubcommandValidator,
+} from "./zod-cli";

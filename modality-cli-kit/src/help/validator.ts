@@ -41,7 +41,31 @@ export function levenshtein(a: string, b: string): number {
   return prev[bn]!;
 }
 
-// ── Default global flags ───────────────────────────────────────────────────
+// ── Fuzzy suggestion helper ─────────────────────────────────────────
+
+/**
+ * Find the closest fuzzy match for an unknown input within a set of candidates.
+ * Returns `null` when no candidate is close enough.
+ *
+ * Used for "Unknown flag --confg. Did you mean --config?" suggestions.
+ */
+export function fuzzySuggestion(input: string, candidates: string[]): string | null {
+  let bestDist = Infinity;
+  let best = "";
+  const maxDist = Math.min(3, Math.floor(input.length / 2));
+
+  for (const c of candidates) {
+    const d = levenshtein(input, c);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
+  }
+
+  return bestDist <= maxDist ? best : null;
+}
+
+// ── Default global flags ────────────────────────────────────────────────
 
 /** Global flags accepted by all subcommands unless overridden. */
 export const DEFAULT_GLOBAL_FLAGS = new Set(["--help", "-h", "--json", "--no-cache"]);
@@ -99,9 +123,6 @@ export function rejectUnknownFlags(
   const known = knownFlags(subcommand, extraFlags);
   const warnings: string[] = [];
 
-  // Scale fuzzy-match threshold relative to flag length
-  const maxDist = (flagLen: number) => Math.min(3, Math.floor(flagLen / 2));
-
   let ended = false;
   for (const a of args) {
     if (a === "--") {
@@ -123,21 +144,9 @@ export function rejectUnknownFlags(
     }
 
     // Long flag: try fuzzy match
-    let bestDist = Infinity;
-    let bestMatch = "";
-    for (const k of known) {
-      if (!k.startsWith("--")) continue;
-      const d = levenshtein(a, k);
-      if (d < bestDist) {
-        bestDist = d;
-        bestMatch = k;
-      }
-    }
-
-    const suffix =
-      bestDist <= maxDist(a.length)
-        ? `. Did you mean ${bestMatch}?`
-        : "";
+    const longKnown = known.filter((k) => k.startsWith("--"));
+    const match = fuzzySuggestion(a, longKnown);
+    const suffix = match ? `. Did you mean ${match}?` : "";
     warnings.push(`Unknown flag ${a}${suffix}`);
   }
 

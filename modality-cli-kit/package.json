@@ -14,7 +14,9 @@
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "git.addAICoAuthor": "off",
-  "dependencies": {},
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
   "devDependencies": {
     "modality-bun-kit": "*"
   },

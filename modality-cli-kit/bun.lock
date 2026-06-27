@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "modality-cli-kit",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
       "devDependencies": {
         "modality-bun-kit": "*",
       },

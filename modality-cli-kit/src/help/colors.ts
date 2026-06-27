@@ -45,7 +45,6 @@ function noColor(): boolean {
   if (_noColor !== null) return _noColor;
   _noColor =
     process.env.NO_COLOR !== undefined ||
-    process.env.NO_COLOR !== "" ||
     !process.stdout.isTTY;
   return _noColor;
 }
