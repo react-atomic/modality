@@ -1,0 +1,42 @@
+{
+  "private": true,
+  "version": "0.0.0",
+  "name": "modality-cli-kit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/react-atomic/modality"
+  },
+  "homepage": "https://github.com/react-atomic/modality",
+  "description": "TODO: description",
+  "keywords": [
+    "modality-cli-kit"
+  ],
+  "author": "Hill <hill@kimo.com>",
+  "license": "ISC",
+  "git.addAICoAuthor": "off",
+  "dependencies": {},
+  "devDependencies": {
+    "modality-bun-kit": "*"
+  },
+  "exports": {
+    "types": "./types/index.d.ts",
+    "require": "./build/cjs/src/index.js",
+    "import": "./build/es/src/index.mjs"
+  },
+  "types": "./types/index.d.ts",
+  "main": "./build/cjs/src/index.js",
+  "module": "./build/es/src/index.mjs",
+  "bin": {
+    "modality-cli-kit": "src/cli.ts"
+  },
+  "scripts": {
+    "build:types": "bun tsc -p ./",
+    "build": "bun build:types",
+    "test": "npm run build && bun test"
+  },
+  "files": [
+    "dist",
+    "package.json",
+    "README.md"
+  ]
+}
