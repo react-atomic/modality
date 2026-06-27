@@ -1,6 +1,5 @@
 {
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "name": "modality-cli-kit",
   "repository": {
     "type": "git",
@@ -21,11 +20,11 @@
     "modality-bun-kit": "*"
   },
   "exports": {
-    "types": "./types/index.d.ts",
+    "types": "./dist/types/index.d.ts",
     "require": "./build/cjs/src/index.js",
     "import": "./build/es/src/index.mjs"
   },
-  "types": "./types/index.d.ts",
+  "types": "./dist/types/index.d.ts",
   "main": "./build/cjs/src/index.js",
   "module": "./build/es/src/index.mjs",
   "bin": {
@@ -33,8 +32,11 @@
   },
   "scripts": {
     "build:types": "bun tsc -p ./",
-    "build": "bun build:types",
-    "test": "npm run build && bun test"
+    "build": "bun run build:types && bun run build:cli",
+    "test": "npm run build && bun test",
+    "build:cjs": "bun build ./src/index.ts --target=bun --outdir=./build/cjs --format=cjs",
+    "build:esm": "bun build ./src/index.ts --target=bun --outdir=./build/es --format=esm",
+    "build:cli": "mkdir -p build/cjs/src build/es/src && bun build ./src/index.ts --target=bun --outdir=./build/cjs --format=cjs && bun build ./src/index.ts --target=bun --outdir=./build/es --format=esm && cp build/cjs/index.js build/cjs/src/index.js && cp build/es/index.js build/es/src/index.mjs"
   },
   "files": [
     "dist",

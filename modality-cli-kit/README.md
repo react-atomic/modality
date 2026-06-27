@@ -38,11 +38,13 @@ const subcommands: Subcommand[] = [
 ];
 
 // Global help
-console.log(generateHelp({
-  cliName: "my-cli",
-  tagline: "My CLI tool",
-  subcommands,
-}));
+console.log(
+  generateHelp({
+    cliName: "my-cli",
+    tagline: "My CLI tool",
+    subcommands,
+  })
+);
 
 // Per-command help
 console.log(generateCommandHelp("my-cli", subcommands[0]));
@@ -50,34 +52,40 @@ console.log(generateCommandHelp("my-cli", subcommands[0]));
 
 ### API
 
-| Function | Purpose |
-|----------|---------|
-| `generateHelp(config)` | Global help page with all subcommands |
-| `generateCommandHelp(cliName, subcommand, globalOptions?)` | Detailed per-command help |
-| `renderSection(heading, entries)` | Render a categorized command section |
-| `rejectUnknownFlags(subcommand, args)` | Validate args against known flags |
-| `knownFlags(subcommand, extraFlags?)` | Extract known flag set |
-| `levenshtein(a, b)` | Edit distance for fuzzy flag matching |
+| Function                                                   | Purpose                               |
+| ---------------------------------------------------------- | ------------------------------------- |
+| `generateHelp(config)`                                     | Global help page with all subcommands |
+| `generateCommandHelp(cliName, subcommand, globalOptions?)` | Detailed per-command help             |
+| `renderSection(heading, entries)`                          | Render a categorized command section  |
+| `rejectUnknownFlags(subcommand, args)`                     | Validate args against known flags     |
+| `knownFlags(subcommand, extraFlags?)`                      | Extract known flag set                |
+| `levenshtein(a, b)`                                        | Edit distance for fuzzy flag matching |
 
 ### Color Helpers
 
 ```ts
-import { cmd, header, opt, arg, dim, bold, example, success, error } from "modality-cli-kit/help";
+import {
+  cmd,
+  header,
+  opt,
+  arg,
+  dim,
+  bold,
+  example,
+  success,
+  error,
+} from "modality-cli-kit/help";
 
-console.log(cmd("my-cli open"));        // cyan bold
-console.log(header("Usage:"));          // yellow bold
-console.log(opt("--config"));           // green
-console.log(arg("<file>"));            // blue
-console.log(dim("description"));        // gray dim
-console.log(success("✓ done"));         // green bold
-console.log(error("✗ failed"));         // red
+console.log(cmd("my-cli open")); // cyan bold
+console.log(header("Usage:")); // yellow bold
+console.log(opt("--config")); // green
+console.log(arg("<file>")); // blue
+console.log(dim("description")); // gray dim
+console.log(success("✓ done")); // green bold
+console.log(error("✗ failed")); // red
 ```
 
 ## Repository
 
 - **Git**: https://github.com/react-atomic/modality
 - **NPM**: https://www.npmjs.com/package/modality-cli-kit
-
-## License
-
-ISC — © Hill <hill@kimo.com>
