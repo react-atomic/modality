@@ -355,10 +355,14 @@ export function schemaToCliOptions(
   const positionals: { opt: Option; key: string; index: number }[] = [];
 
   for (const [key, rawField] of Object.entries(schema.shape)) {
+    const override = keyMap?.[key];
+
+    // Skip hidden fields entirely
+    if (override?.hidden) continue;
+
     const { baseType, isOptional, enumValues, description } =
       analyzeZodField(rawField as z.ZodTypeAny);
 
-    const override = keyMap?.[key];
     const flag =
       override?.flag ?? (key.length === 1 ? `-${key}` : `--${toKebab(key)}`);
 

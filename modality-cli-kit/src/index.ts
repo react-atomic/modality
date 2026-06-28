@@ -2,6 +2,7 @@
 // Direct re-exports so consumers can import { Subcommand, generateHelp, ... }
 // from "modality-cli-kit" without needing a /help sub-path.
 export type { Subcommand, Option, HelpConfig, KeyOverride } from "./help/types";
+export type { CliToolMeta, BuildCliFromToolsOptions, CliBuildResult } from "./help/cli-builder";
 export {
   generateHelp,
   generateCommandHelp,

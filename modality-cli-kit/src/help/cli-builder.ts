@@ -79,10 +79,10 @@ export interface CliToolMeta {
   usage?: string;
   /**
    * Per-field overrides for CLI flag generation:
-   * - `flag`: explicit `--flag-name` or `-f` string (overrides the schema key)
-   * - `arg`: explicit placeholder string, e.g. `"<file>"`
-   * - `position`: use `position: N` to make this field a positional arg
-   *   (alternative to the top-level `positionals` array)
+   * - `flag`: explicit `--flag-name` or `-f` (overrides the schema key)
+   * - `arg`: explicit placeholder, e.g. `"<file>"` (overrides the arg placeholder)
+   * - `position`: make this field a positional arg at index N
+   * - `hidden`: exclude this field from the CLI entirely
    */
   keyMap?: Record<string, KeyOverride>;
 }
@@ -108,6 +108,12 @@ export interface BuildCliFromToolsOptions {
    * Keys are tool names (as they appear in the tools array).
    */
   toolAnnotations?: Record<string, CliToolMeta>;
+  /**
+   * Schema keys to skip during CLI flag/positional generation for ALL tools.
+   * Useful for fields shared by every tool (like `BaseArgsSchema` fields)
+   * that should not appear as per-command options.
+   */
+  skipFields?: string[];
 }
 
 /** Result of a `buildCliFromTools` call. */
@@ -159,7 +165,7 @@ export function buildCliFromTools(
   }>,
   options: BuildCliFromToolsOptions,
 ): CliBuildResult {
-  const { cliName, tagline, globalOptionsSchema, globalExamples, footer, toolAnnotations } =
+  const { cliName, tagline, globalOptionsSchema, globalExamples, footer, toolAnnotations, skipFields } =
     options;
 
   const aliases: Record<string, string> = {};
@@ -171,8 +177,9 @@ export function buildCliFromTools(
 
     const meta = toolAnnotations?.[name];
 
-    // Collect keyMap from: top-level positionals array OR per-field keyMap
-    const keyMap = buildKeyMap(meta);
+    // Collect keyMap from: top-level positionals array OR per-field keyMap,
+    // plus any globally skipped fields
+    const keyMap = buildKeyMap(meta, skipFields);
 
     // Derive options/positionals from the tool's inputSchema
     let toolOptions: Option[] = [];
@@ -249,15 +256,23 @@ export function buildCliFromTools(
 // ── Internal helpers ─────────────────────────────────────────────────────
 
 /**
- * Merge the positionals list and per-field keyMap into a single keyMap
- * suitable for passing to `schemaToCliOptions()`.
+ * Merge the positionals list, per-field keyMap, and global skipFields into a
+ * single keyMap suitable for passing to `schemaToCliOptions()`.
  */
 function buildKeyMap(
   meta: CliToolMeta | undefined,
+  skipFields?: string[],
 ): Record<string, KeyOverride> | undefined {
-  if (!meta) return undefined;
-
   const km: Record<string, KeyOverride> = {};
+
+  // Mark globally skipped fields as hidden
+  if (skipFields) {
+    for (const key of skipFields) {
+      km[key] = { ...km[key], hidden: true };
+    }
+  }
+
+  if (!meta) return Object.keys(km).length > 0 ? km : undefined;
 
   // Copy explicit keyMap entries
   if (meta.keyMap) {

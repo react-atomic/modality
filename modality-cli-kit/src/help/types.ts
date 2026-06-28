@@ -37,6 +37,8 @@ export interface KeyOverride {
   arg?: string;
   /** When set, route this field into positionals at the given index. */
   position?: number;
+  /** When `true` the field is excluded from CLI flag/positional generation entirely. */
+  hidden?: boolean;
 }
 
 /** A CLI subcommand */
