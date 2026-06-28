@@ -34,7 +34,7 @@ export {
 } from "./colors";
 
 // Types
-export type { Option, Subcommand, HelpConfig } from "./types";
+export type { Option, Subcommand, HelpConfig, KeyOverride } from "./types";
 
 // Generator
 export {
@@ -69,7 +69,13 @@ export {
 export {
   inferOptionType,
   optionsToSchema,
+  schemaToCliOptions,
+  toKebab,
   parseCliArgs,
   validateSubcommandArgs,
   buildSubcommandValidator,
 } from "./zod-cli";
+
+// CLI Builder
+export { buildCliFromTools } from "./cli-builder";
+export type { CliToolMeta, BuildCliFromToolsOptions, CliBuildResult } from "./cli-builder";

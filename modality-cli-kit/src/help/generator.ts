@@ -10,6 +10,16 @@ import * as c from "./colors";
 import { padName, padVisible, flagPad, visibleWidth, Lines } from "./formatter";
 import type { Subcommand, HelpConfig, Option } from "./types";
 
+/**
+ * Render one positional-argument line: `<name>   description`.
+ * Shared by the subcommand index and per-command help so both stay in sync.
+ */
+function renderPositional(pos: Option, indent: string): string {
+  const name = c.arg(`<${pos.flag}>`);
+  const pad = flagPad(pos.flag.length + 2, false);
+  return `${indent}${name}${pad}${c.dim(pos.desc)}`;
+}
+
 // ── Option rendering ───────────────────────────────────────────────────────
 
 /**
@@ -50,9 +60,12 @@ export function renderSubcommand(
     return `  ${nameCol}${c.dim(sc.summary)}`;
   }
 
-  // Non-compact: name + summary + options below
+  // Non-compact: name + summary + positionals + options below
   const lines = new Lines();
   lines.push(`  ${nameCol}${c.dim(sc.summary)}`);
+  for (const pos of sc.positionals ?? []) {
+    lines.push(renderPositional(pos, "    "));
+  }
   for (const opt of sc.options ?? []) {
     lines.push(renderOption(opt, false));
   }
@@ -187,9 +200,22 @@ export function generateCommandHelp(
     out.push(`${c.header("Usage:")}  ${c.cmd(first!)}`);
     for (const line of rest) out.push(`        ${c.cmd(line)}`);
   } else {
-    out.push(`${c.header("Usage:")}  ${c.cmd(cliName)} ${c.cmd(subcommand.name)} ${c.dim("[options]")}`);
+    const posSlots = (subcommand.positionals ?? [])
+      .map((pos) => c.arg(`<${pos.flag}>`))
+      .join(" ");
+    const usageParts = [c.cmd(cliName), c.cmd(subcommand.name), posSlots, c.dim("[options]")];
+    out.push(`${c.header("Usage:")}  ${usageParts.filter(Boolean).join(" ")}`);
   }
   out.push("");
+
+  // Positional Arguments
+  if (subcommand.positionals && subcommand.positionals.length > 0) {
+    out.push(`${c.header("Arguments:")}`);
+    for (const pos of subcommand.positionals) {
+      out.push(renderPositional(pos, "  "));
+    }
+    out.push("");
+  }
 
   // Options
   const hasOwnOptions = subcommand.options && subcommand.options.length > 0;

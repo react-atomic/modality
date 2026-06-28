@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import type { Option, Subcommand } from "./types";
+import type { Option, Subcommand, KeyOverride } from "./types";
 import { fuzzySuggestion, DEFAULT_GLOBAL_FLAGS } from "./validator";
 
 // ── Schema introspection helpers ─────────────────────────────────────
@@ -54,11 +54,38 @@ function isBooleanSchema(schema: z.ZodTypeAny): boolean {
  * - Options with an `arg` placeholder → `z.string()` (takes a value)
  * - Options without `arg` → `z.boolean()` (on/off flag)
  * - Options beginning with `--no-` → `z.boolean().default(true)` (opt-out flag)
+ * - Options with `type: "number"` → `z.coerce.number()`
+ * - Options with `type: "enum"` → `z.enum(enumValues!)`
+ * - Options with `required: true` → no `.optional()` wrapper
  */
 export function inferOptionType(option: Option): z.ZodTypeAny {
   if (option.flag.startsWith("--no-")) return z.boolean().default(true);
-  if (option.arg) return z.string().optional();
-  return z.boolean().optional();
+
+  const build = (): z.ZodTypeAny => {
+    switch (option.type) {
+      case "number":
+        return z.coerce.number();
+      case "enum":
+        if (!option.enumValues || option.enumValues.length === 0) {
+          return z.string();
+        }
+        if (option.enumValues.length === 1) {
+          // z.enum() requires at least 2 elements; singleton becomes a string with a literal suggestion
+          return z.literal(option.enumValues[0]);
+        }
+        return z.enum(option.enumValues as [string, ...string[]]);
+      case "boolean":
+        return z.boolean();
+      case "string":
+        return z.string();
+      default:
+        // When no arg → boolean flag; when arg present → string value
+        return option.arg ? z.string() : z.boolean();
+    }
+  };
+
+  const base = build();
+  return option.required ? base : base.optional();
 }
 
 /**
@@ -95,20 +122,28 @@ export function optionsToSchema(
  * After parsing raw tokens into a plain object, the object is validated through
  * the Zod schema, catching type mismatches, missing required fields, etc.
  *
- * @returns An object with `data` (the typed parsed output) and `warnings`.
- *          On schema validation failure, partial data is still returned alongside
- *          structured warning messages.
+ * Positional (non-flag) tokens are collected in order. If `positionalKeys` is
+ * supplied, each positional is assigned to the corresponding key *before*
+ * validation, so positionals receive the same coercion/enum/required checks as
+ * flags. The full ordered list is also returned as `positionals`.
+ *
+ * @returns An object with `data` (the typed parsed output), `warnings`, and the
+ *          ordered `positionals` tokens. On schema validation failure, partial
+ *          data is still returned alongside structured warning messages.
  */
 export function parseCliArgs<T extends z.ZodRawShape>(
   schema: z.ZodObject<T>,
   args: string[],
+  positionalKeys?: string[],
 ): {
   data: z.output<z.ZodObject<T>>;
   warnings: string[];
+  positionals: string[];
 } {
   const parsed: Record<string, unknown> = {};
   const warnings: string[] = [];
   const shapeKeys = new Set(Object.keys(schema.shape));
+  const positionals: string[] = [];
   let ended = false;
 
   for (let i = 0; i < args.length; i++) {
@@ -118,10 +153,16 @@ export function parseCliArgs<T extends z.ZodRawShape>(
       ended = true;
       continue;
     }
-    if (ended) continue;
+    if (ended) {
+      positionals.push(a);
+      continue;
+    }
 
-    // Positional args are ignored by flag parser
-    if (!a.startsWith("-")) continue;
+    // Non-flag tokens are collected as positionals for later mapping
+    if (!a.startsWith("-")) {
+      positionals.push(a);
+      continue;
+    }
 
     // --no-<flag> negation
     if (a.startsWith("--no-")) {
@@ -166,7 +207,9 @@ export function parseCliArgs<T extends z.ZodRawShape>(
     const isBoolean = isBooleanSchema(fieldSchema);
 
     if (isBoolean) {
-      parsed[key] = true;
+      // Inline `--flag=false/0/no/off` disables; bare `--flag` (or any other
+      // value) enables. Without this, `--json=false` would wrongly set true.
+      parsed[key] = value === undefined ? true : !/^(false|0|no|off)$/i.test(value);
     } else {
       // Consume next arg as value (if not already provided via =)
       if (value === undefined) {
@@ -177,6 +220,15 @@ export function parseCliArgs<T extends z.ZodRawShape>(
         continue;
       }
       parsed[key] = value;
+    }
+  }
+
+  // Map positional tokens onto their keys before validation so they receive
+  // the same coercion/enum/required checks as flags.
+  if (positionalKeys) {
+    for (let p = 0; p < positionalKeys.length && p < positionals.length; p++) {
+      const key = positionalKeys[p]!;
+      if (parsed[key] === undefined) parsed[key] = positionals[p];
     }
   }
 
@@ -192,6 +244,150 @@ export function parseCliArgs<T extends z.ZodRawShape>(
   return {
     data: (result.success ? result.data : parsed) as z.output<z.ZodObject<T>>,
     warnings,
+    positionals,
+  };
+}
+
+// ── Convert camelCase to kebab-case ───────────────────────────────────────
+
+/**
+ * Convert camelCase to kebab-case.
+ * "userDataDir" → "user-data-dir", "mcpType" → "mcp-type"
+ */
+export function toKebab(s: string): string {
+  return s.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+// ── Zod field introspection ───────────────────────────────────────────────
+
+interface FieldAnalysis {
+  baseType: "string" | "boolean" | "number" | "enum";
+  isOptional: boolean;
+  enumValues?: string[];
+  description?: string;
+}
+
+/**
+ * Peel `.optional()`, `.default()`, `.nullable()` wrappers and classify the
+ * inner Zod type. Returns the base type together with metadata.
+ *
+ * In Zod 4, `.describe()` sets the description on the outermost wrapper,
+ * so `description` is captured from the original field before unwrapping.
+ */
+function analyzeZodField(field: z.ZodTypeAny): FieldAnalysis {
+  let isOptional = false;
+  let current: z.ZodTypeAny = field;
+
+  // Capture description from the outer field (Zod 4 puts it on the wrapper)
+  const description = (field as { description?: string }).description;
+
+  // Peel wrappers
+  while (true) {
+    if (current instanceof z.ZodOptional) {
+      isOptional = true;
+      current = current.unwrap() as unknown as z.ZodTypeAny;
+      continue;
+    }
+    if (current instanceof z.ZodDefault) {
+      isOptional = true; // has default → effectively optional in CLI
+      current = current.unwrap() as unknown as z.ZodTypeAny;
+      continue;
+    }
+    if (current instanceof z.ZodNullable) {
+      current = current.unwrap() as unknown as z.ZodTypeAny;
+      continue;
+    }
+    break;
+  }
+
+  // Classify the inner type
+  if (current instanceof z.ZodString)
+    return { baseType: "string", isOptional, description };
+  if (current instanceof z.ZodBoolean)
+    return { baseType: "boolean", isOptional, description };
+  if (current instanceof z.ZodNumber)
+    return { baseType: "number", isOptional, description };
+  if (current instanceof z.ZodEnum)
+    return {
+      baseType: "enum",
+      isOptional,
+      enumValues: [...current.options].map(String),
+      description,
+    };
+
+  // Fallback for unrecognised types
+  return { baseType: "string", isOptional, description: description ?? "(unknown type)" };
+}
+
+// ── Reverse: Zod → Option[] ───────────────────────────────────────────────
+
+/**
+ * Walk a ZodObject's `.shape` fields and produce an `Option[]` suitable for
+ * help text display and CLI flag validation.
+ *
+ * Conventions used for the conversion:
+ *
+ *   Schema field type        →  Option.type
+ *   -----------------------     ------------
+ *   z.string()                →  "string" (takes a value)
+ *   z.boolean()               →  "boolean" (on/off flag)
+ *   z.coerce.number()         →  "number"
+ *   z.enum([...])             →  "enum" + enumValues
+ *
+ * Wrapper handling: `.optional()`, `.default()`, `.nullable()` are unwrapped
+ * to reach the base type.  `required` is set to `true` only when the field
+ * has NO optional wrapper.
+ *
+ * Field `.describe()` strings are used as the option description.
+ * Single-character keys produce short flags (`-h`); all others produce
+ * long flags (`--kebab-case`).
+ *
+ * @param schema       The Zod object schema to walk.
+ * @param keyMap       Optional key → CLI flag metadata overrides.
+ *                     Use `{ position: N }` to make a field a positional arg.
+ * @returns An object with `options` (flag-style) and `positionals` (ordered).
+ */
+export function schemaToCliOptions(
+  schema: z.ZodObject<Record<string, z.ZodTypeAny>>,
+  keyMap?: Record<string, KeyOverride>,
+): { options: Option[]; positionals: Option[] } {
+  const options: Option[] = [];
+  const positionals: { opt: Option; key: string; index: number }[] = [];
+
+  for (const [key, rawField] of Object.entries(schema.shape)) {
+    const { baseType, isOptional, enumValues, description } =
+      analyzeZodField(rawField as z.ZodTypeAny);
+
+    const override = keyMap?.[key];
+    const flag =
+      override?.flag ?? (key.length === 1 ? `-${key}` : `--${toKebab(key)}`);
+
+    const opt: Option = {
+      flag,
+      arg:
+        baseType === "boolean"
+          ? undefined
+          : override?.arg ?? `<${toKebab(key)}>`,
+      desc: description ?? "",
+      type: baseType as Option["type"],
+      required: !isOptional,
+    };
+    if (baseType === "enum" && enumValues) {
+      opt.enumValues = enumValues;
+    }
+
+    if (override?.position !== undefined) {
+      positionals.push({ opt, key, index: override.position });
+    } else {
+      options.push(opt);
+    }
+  }
+
+  // Return positionals in declaration order
+  positionals.sort((a, b) => a.index - b.index);
+  return {
+    options,
+    positionals: positionals.map((p) => p.opt),
   };
 }
 
@@ -227,6 +423,8 @@ function mergeDefaultFlags(
  * Convert a Subcommand definition's options into a Zod schema and validate CLI args.
  *
  * Uses `optionsToSchema` to infer the schema from the subcommand's `options` array.
+ * If `subcommand.schema` is set, it is used directly (bypasses inference).
+ * If `subcommand.positionals` exists, positional fields are added to the schema.
  * Global default flags (--help, --json, --no-cache) are automatically included.
  * Returns both the typed parsed data and any validation warnings.
  *
@@ -244,11 +442,35 @@ export function validateSubcommandArgs(
   data: Record<string, unknown>;
   warnings: string[];
 } {
-  const schema = mergeDefaultFlags(
-    optionsToSchema(subcommand?.options ?? []),
-    extraFlags,
+  const positionals = subcommand?.positionals ?? [];
+  const positionalKeys = positionals.map((pos) => pos.flag);
+  let schema: z.ZodObject<Record<string, z.ZodTypeAny>>;
+
+  // Use a pre-built Zod object schema directly if provided (bypasses inference).
+  if (subcommand?.schema instanceof z.ZodObject) {
+    schema = subcommand.schema as z.ZodObject<Record<string, z.ZodTypeAny>>;
+  } else {
+    const optsSchema = optionsToSchema(subcommand?.options ?? []);
+    // Merge positional fields into the options schema (skip name collisions).
+    // Positionals always carry a value, so default to a string when no explicit
+    // `type` is given (the boolean-flag default only makes sense for options).
+    const posShape: Record<string, z.ZodTypeAny> = {};
+    for (const pos of positionals) {
+      if (!(pos.flag in optsSchema.shape)) {
+        posShape[pos.flag] = inferOptionType({
+          ...pos,
+          arg: pos.arg ?? `<${pos.flag}>`,
+        });
+      }
+    }
+    schema = z.object({ ...optsSchema.shape, ...posShape });
+  }
+
+  return parseCliArgs(
+    mergeDefaultFlags(schema, extraFlags),
+    args,
+    positionalKeys,
   );
-  return parseCliArgs(schema, args);
 }
 
 /**

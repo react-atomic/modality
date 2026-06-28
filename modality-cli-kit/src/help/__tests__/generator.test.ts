@@ -134,6 +134,20 @@ describe("generateHelp", () => {
     expect(out).toContain("test");
     expect(out).toContain("Test command");
   });
+
+  test("non-compact mode renders positionals beneath the summary", () => {
+    const out = renderSubcommand(
+      {
+        name: "convert",
+        summary: "Convert a value",
+        positionals: [{ flag: "symbol", desc: "Asset symbol" }],
+      },
+      16,
+      false,
+    );
+    expect(out).toContain("<symbol>");
+    expect(out).toContain("Asset symbol");
+  });
 });
 
 describe("generateCommandHelp", () => {
@@ -178,6 +192,27 @@ describe("generateCommandHelp", () => {
     const help = generateCommandHelp("my-cli", sc);
     expect(help).toContain("my-cli trade <subcommand>");
     expect(help).toContain("my-cli trade open");
+  });
+
+  test("renders positionals in the usage line and an Arguments section", () => {
+    const sc: Subcommand = {
+      name: "convert",
+      summary: "Convert a value",
+      positionals: [
+        { flag: "symbol", desc: "Asset symbol", required: true },
+        { flag: "amount", arg: "<N>", desc: "Amount", type: "number" },
+      ],
+      options: [{ flag: "--json", desc: "JSON output" }],
+    };
+    const help = generateCommandHelp("my-cli", sc);
+    // Usage line lists positional slots before [options]
+    expect(help).toContain("my-cli convert <symbol> <amount>");
+    // Dedicated Arguments section documents each positional
+    expect(help).toContain("Arguments:");
+    expect(help).toContain("<symbol>");
+    expect(help).toContain("Asset symbol");
+    expect(help).toContain("<amount>");
+    expect(help).toContain("Amount");
   });
 });
 
