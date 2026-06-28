@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import type { Option, Subcommand, KeyOverride } from "./types";
+import type { Option, CLICommand, KeyOverride } from "./types";
 import { fuzzySuggestion, DEFAULT_GLOBAL_FLAGS } from "./validator";
 
 // ── Schema introspection helpers ─────────────────────────────────────
@@ -421,40 +421,40 @@ function mergeDefaultFlags(
   return z.object(merged);
 }
 
-// ── Subcommand-level validation ─────────────────────────────────────
+// ── CLICommand-level validation ─────────────────────────────────────
 
 /**
- * Convert a Subcommand definition's options into a Zod schema and validate CLI args.
+ * Convert a CLICommand definition's options into a Zod schema and validate CLI args.
  *
- * Uses `optionsToSchema` to infer the schema from the subcommand's `options` array.
- * If `subcommand.schema` is set, it is used directly (bypasses inference).
- * If `subcommand.positionals` exists, positional fields are added to the schema.
+ * Uses `optionsToSchema` to infer the schema from the command's `options` array.
+ * If `command.schema` is set, it is used directly (bypasses inference).
+ * If `command.positionals` exists, positional fields are added to the schema.
  * Global default flags (--help, --json, --no-cache) are automatically included.
  * Returns both the typed parsed data and any validation warnings.
  *
  * @example
  * ```ts
- * const result = validateSubcommandArgs(subcommand, ["--timeframe", "5m"]);
+ * const result = validateCLICommandArgs(command, ["--timeframe", "5m"]);
  * // result.data → { timeframe: "5m" }
  * ```
  */
-export function validateSubcommandArgs(
-  subcommand: Subcommand | null | undefined,
+export function validateCLICommandArgs(
+  command: CLICommand | null | undefined,
   args: string[],
   extraFlags?: string[],
 ): {
   data: Record<string, unknown>;
   warnings: string[];
 } {
-  const positionals = subcommand?.positionals ?? [];
+  const positionals = command?.positionals ?? [];
   const positionalKeys = positionals.map((pos) => pos.flag);
   let schema: z.ZodObject<Record<string, z.ZodTypeAny>>;
 
   // Use a pre-built Zod object schema directly if provided (bypasses inference).
-  if (subcommand?.schema instanceof z.ZodObject) {
-    schema = subcommand.schema as z.ZodObject<Record<string, z.ZodTypeAny>>;
+  if (command?.schema instanceof z.ZodObject) {
+    schema = command.schema as z.ZodObject<Record<string, z.ZodTypeAny>>;
   } else {
-    const optsSchema = optionsToSchema(subcommand?.options ?? []);
+    const optsSchema = optionsToSchema(command?.options ?? []);
     // Merge positional fields into the options schema (skip name collisions).
     // Positionals always carry a value, so default to a string when no explicit
     // `type` is given (the boolean-flag default only makes sense for options).
@@ -478,28 +478,28 @@ export function validateSubcommandArgs(
 }
 
 /**
- * Build a Zod-powered args validator for a full CLI with many subcommands.
+ * Build a Zod-powered args validator for a full CLI with many commands.
  *
- * Each subcommand's options are converted to a Zod schema and used to validate
- * raw CLI argument tokens. Unknown subcommand names fall through to the
+ * Each command's options are converted to a Zod schema and used to validate
+ * raw CLI argument tokens. Unknown command names fall through to the
  * top-level (empty validation).
  *
  * ```ts
- * const validate = buildSubcommandValidator(subcommands);
+ * const validate = buildCLICommandValidator(commands);
  * const result = validate("price", ["--timeframe", "5m"]);
  * // result.data → { timeframe: "5m" }
  * ```
  */
-export function buildSubcommandValidator(
-  subcommands: Subcommand[],
+export function buildCLICommandValidator(
+  commands: CLICommand[],
   extraFlags?: string[],
 ): (
   name: string,
   args: string[],
 ) => { data: Record<string, unknown>; warnings: string[] } {
-  const map = new Map(subcommands.map((sc) => [sc.name, sc]));
+  const map = new Map(commands.map((cmd) => [cmd.name, cmd]));
 
   return (name: string, args: string[]) => {
-    return validateSubcommandArgs(map.get(name) ?? null, args, extraFlags);
+    return validateCLICommandArgs(map.get(name) ?? null, args, extraFlags);
   };
 }

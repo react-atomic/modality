@@ -2,17 +2,17 @@
  * CLI help text generator — composable, reusable across CLIs.
  *
  * Two output modes:
- *   1. **Global help** (`generateHelp`) — lists all subcommands with one-liners
+ *   1. **Global help** (`generateHelp`) — lists all commands with one-liners
  *   2. **Per-command help** (`generateCommandHelp`) — detailed flags, usage, examples
  */
 
 import * as c from "./colors";
 import { padName, padVisible, flagPad, visibleWidth, Lines } from "./formatter";
-import type { Subcommand, HelpConfig, Option } from "./types";
+import type { CLICommand, HelpConfig, Option } from "./types";
 
 /**
  * Render one positional-argument line: `<name>   description`.
- * Shared by the subcommand index and per-command help so both stay in sync.
+ * Shared by the command index and per-command help so both stay in sync.
  */
 function renderPositional(pos: Option, indent: string): string {
   const name = c.arg(`<${pos.flag}>`);
@@ -34,12 +34,12 @@ function renderOption(opt: Option, compact: boolean): string {
   return `    ${flag}${pad}${c.dim(opt.desc)}`;
 }
 
-// ── Subcommand rendering ──────────────────────────────────────────────────
+// ── Command rendering ─────────────────────────────────────────────────────
 
 /**
- * Render one subcommand entry for the global help index.
+ * Render one command entry for the global help index.
  *
- * Compact mode (used inside the subcommand list):
+ * Compact mode (used inside the command list):
  *   price              K 線進場價建議
  *   --timeframe <TF>   週期
  *
@@ -48,25 +48,25 @@ function renderOption(opt: Option, compact: boolean): string {
  *     --timeframe <TF>  週期
  *     --lookback <N>    觀察窗
  */
-export function renderSubcommand(
-  sc: Subcommand,
+export function renderCLICommand(
+  cmd: CLICommand,
   colNameWidth: number = 16,
   compact: boolean = true,
 ): string {
-  const nameCol = c.cmd(padName(sc.name, colNameWidth));
+  const nameCol = c.cmd(padName(cmd.name ?? "", colNameWidth));
 
   if (compact) {
     // Single-line: name + summary only
-    return `  ${nameCol}${c.dim(sc.summary)}`;
+    return `  ${nameCol}${c.dim(cmd.summary ?? "")}`;
   }
 
   // Non-compact: name + summary + positionals + options below
   const lines = new Lines();
-  lines.push(`  ${nameCol}${c.dim(sc.summary)}`);
-  for (const pos of sc.positionals ?? []) {
+  lines.push(`  ${nameCol}${c.dim(cmd.summary ?? "")}`);
+  for (const pos of cmd.positionals ?? []) {
     lines.push(renderPositional(pos, "    "));
   }
-  for (const opt of sc.options ?? []) {
+  for (const opt of cmd.options ?? []) {
     lines.push(renderOption(opt, false));
   }
   return lines.flush();
@@ -75,14 +75,14 @@ export function renderSubcommand(
 // ── Global help ────────────────────────────────────────────────────────────
 
 /**
- * Generate the main help page listing all subcommands.
+ * Generate the main help page listing all commands.
  *
  * ```text
  * co-chrome — Chrome DevTools CLI
  *
  * Usage: co-chrome <command> [options]
  *
- * Subcommands:
+ * Commands:
  *   open              Navigate to a URL
  *   click             Click on an element
  *   ...
@@ -98,7 +98,7 @@ export function generateHelp(config: HelpConfig): string {
   const {
     cliName,
     tagline,
-    subcommands,
+    commands,
     globalOptions,
     globalExamples,
     footer,
@@ -107,9 +107,9 @@ export function generateHelp(config: HelpConfig): string {
 
   // Sort if not explicitly kept in order
   const sorted = config.sorted !== false;
-  const scs = sorted
-    ? [...subcommands].sort((a, b) => a.name.localeCompare(b.name))
-    : subcommands;
+  const cmds = sorted
+    ? [...commands].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+    : commands;
 
   const out = new Lines();
 
@@ -122,10 +122,10 @@ export function generateHelp(config: HelpConfig): string {
   out.push(`${c.header("Usage:")}  ${c.cmd(cliName)} ${c.arg("<command>")} ${c.dim("[options]")}`);
   out.push("");
 
-  // Subcommands
+  // Commands
   out.push(`${c.header("Commands:")}`);
-  for (const sc of scs) {
-    out.push(renderSubcommand(sc, colNameWidth, true));
+  for (const cmd of cmds) {
+    out.push(renderCLICommand(cmd, colNameWidth, true));
   }
 
   // Global options
@@ -163,7 +163,7 @@ export function generateHelp(config: HelpConfig): string {
 // ── Command-specific help ──────────────────────────────────────────────────
 
 /**
- * Generate detailed help for a single subcommand.
+ * Generate detailed help for a single CLI command.
  *
  * ```text
  * use-stock price — K 線進場價建議
@@ -181,49 +181,49 @@ export function generateHelp(config: HelpConfig): string {
  * ```
  *
  * @param cliName       CLI binary name
- * @param subcommand    The subcommand metadata
+ * @param command       The CLICommand metadata
  * @param globalOptions Optional global options to append to the options list
  */
 export function generateCommandHelp(
   cliName: string,
-  subcommand: Subcommand,
+  command: CLICommand,
   globalOptions?: Option[],
 ): string {
   const out = new Lines();
   out.push("");
-  out.push(`${c.bold(`${cliName} ${subcommand.name}`)} ${c.dim(`— ${subcommand.summary}`)}`);
+  out.push(`${c.bold(`${cliName} ${command.name}`)} ${c.dim(`— ${command.summary ?? ""}`)}`);
   out.push("");
 
   // Usage
-  if (subcommand.usage && subcommand.usage.length > 0) {
-    const [first, ...rest] = subcommand.usage;
+  if (command.usage && command.usage.length > 0) {
+    const [first, ...rest] = command.usage;
     out.push(`${c.header("Usage:")}  ${c.cmd(first!)}`);
     for (const line of rest) out.push(`        ${c.cmd(line)}`);
   } else {
-    const posSlots = (subcommand.positionals ?? [])
+    const posSlots = (command.positionals ?? [])
       .map((pos) => c.arg(`<${pos.flag}>`))
       .join(" ");
-    const usageParts = [c.cmd(cliName), c.cmd(subcommand.name), posSlots, c.dim("[options]")];
+    const usageParts = [c.cmd(cliName), c.cmd(command.name ?? ""), posSlots, c.dim("[options]")];
     out.push(`${c.header("Usage:")}  ${usageParts.filter(Boolean).join(" ")}`);
   }
   out.push("");
 
   // Positional Arguments
-  if (subcommand.positionals && subcommand.positionals.length > 0) {
+  if (command.positionals && command.positionals.length > 0) {
     out.push(`${c.header("Arguments:")}`);
-    for (const pos of subcommand.positionals) {
+    for (const pos of command.positionals) {
       out.push(renderPositional(pos, "  "));
     }
     out.push("");
   }
 
   // Options
-  const hasOwnOptions = subcommand.options && subcommand.options.length > 0;
+  const hasOwnOptions = command.options && command.options.length > 0;
   const hasGlobalOptions = globalOptions && globalOptions.length > 0;
 
   if (hasOwnOptions || hasGlobalOptions) {
     out.push(`${c.header("Options:")}`);
-    for (const opt of subcommand.options ?? []) {
+    for (const opt of command.options ?? []) {
       out.push(renderOption(opt, false));
     }
     if (hasGlobalOptions) {
@@ -232,16 +232,16 @@ export function generateCommandHelp(
       }
     }
     if (!hasOwnOptions) {
-      // still show --help even if subcommand has no custom options
+      // still show --help even if command has no custom options
       out.push(`  ${c.opt("--help")}, ${c.opt("-h")}          ${c.dim("Show this help message")}`);
     }
     out.push("");
   }
 
   // Examples
-  if (subcommand.examples && subcommand.examples.length > 0) {
+  if (command.examples && command.examples.length > 0) {
     out.push(`${c.header("Examples:")}`);
-    for (const ex of subcommand.examples) {
+    for (const ex of command.examples) {
       out.push(`  ${c.example(ex)}`);
     }
     out.push("");

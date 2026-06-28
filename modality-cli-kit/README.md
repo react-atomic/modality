@@ -8,10 +8,10 @@ A reusable CLI help generation system that powers both the co-chrome and use-sto
 
 ### Features
 
-- **Declarative metadata** — Define subcommands as typed data, not template strings
+- **Declarative metadata** — Define commands as typed data, not template strings
 - **Bun-style ANSI colors** — Auto-detects TTY, respects `NO_COLOR`
-- **Global help** — Lists all subcommands with one-line summaries
-- **Per-command help** — Detailed flags, usage, and examples per subcommand
+- **Global help** — Lists all commands with one-line summaries
+- **Per-command help** — Detailed flags, usage, and examples per command
 - **Flag validation** — Rejects unknown flags with fuzzy-match suggestions
 - **Semantic helpers** — `cmd()`, `header()`, `opt()`, `arg()`, `dim()`, `example()`, etc.
 - **Zero runtime dependencies** — Pure TypeScript
@@ -20,9 +20,9 @@ A reusable CLI help generation system that powers both the co-chrome and use-sto
 
 ```ts
 import { generateHelp, generateCommandHelp } from "modality-cli-kit";
-import type { Subcommand } from "modality-cli-kit";
+import type { CLICommand } from "modality-cli-kit";
 
-const subcommands: Subcommand[] = [
+const commands: CLICommand[] = [
   {
     name: "open",
     summary: "Navigate to a URL",
@@ -42,23 +42,23 @@ console.log(
   generateHelp({
     cliName: "my-cli",
     tagline: "My CLI tool",
-    subcommands,
+    commands,
   })
 );
 
 // Per-command help
-console.log(generateCommandHelp("my-cli", subcommands[0]));
+console.log(generateCommandHelp("my-cli", commands[0]));
 ```
 
 ### API
 
 | Function                                                   | Purpose                               |
 | ---------------------------------------------------------- | ------------------------------------- |
-| `generateHelp(config)`                                     | Global help page with all subcommands |
-| `generateCommandHelp(cliName, subcommand, globalOptions?)` | Detailed per-command help             |
+| `generateHelp(config)`                                     | Global help page with all commands    |
+| `generateCommandHelp(cliName, command, globalOptions?)`   | Detailed per-command help             |
 | `renderSection(heading, entries)`                          | Render a categorized command section  |
-| `rejectUnknownFlags(subcommand, args)`                     | Validate args against known flags     |
-| `knownFlags(subcommand, extraFlags?)`                      | Extract known flag set                |
+| `rejectUnknownFlags(command, args)`                        | Validate args against known flags     |
+| `knownFlags(command, extraFlags?)`                         | Extract known flag set                |
 | `levenshtein(a, b)`                                        | Edit distance for fuzzy flag matching |
 
 ### Color Helpers

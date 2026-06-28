@@ -5,11 +5,11 @@
  */
 
 import { generateHelp, generateCommandHelp, renderSection } from "./generator";
-import type { Subcommand, HelpConfig } from "./types";
+import type { CLICommand, HelpConfig } from "./types";
 
 // ── Simulate co-chrome style (categorized commands) ────────────────────────
 
-const chromeSubcommands: Subcommand[] = [
+const chromeCLICommands = [
   {
     name: "open",
     summary: "Navigate to a URL (aliases: goto, navigate)",
@@ -74,12 +74,12 @@ const chromeSubcommands: Subcommand[] = [
     ],
     examples: ["co-chrome e2e --config login.yaml --verbose"],
   },
-];
+] as CLICommand[];
 
 const chromeHelp: HelpConfig = {
   cliName: "co-chrome",
   tagline: "Chrome DevTools CLI — Browser automation tool",
-  subcommands: chromeSubcommands,
+  commands: chromeCLICommands,
   globalOptions: [
     { flag: "--help", arg: "", desc: "Show this help message" },
     { flag: "--version", desc: "Show version information" },
@@ -92,9 +92,9 @@ const chromeHelp: HelpConfig = {
   footer: "Pipe-friendly — auto-detects TTY and respects NO_COLOR.",
 };
 
-// ── Simulate use-stock style (flat subcommand list) ────────────────────────
+// ── Simulate use-stock style (flat command list) ────────────────────────────
 
-const stockSubcommands: Subcommand[] = [
+const stockCLICommands = [
   { name: "volatility", summary: "TX futures three-session volatility" },
   { name: "max-pain", summary: "TXO weekly options Max Pain calculator" },
   { name: "plan", summary: "Structured trading plan (SKILL.mdx format)" },
@@ -112,15 +112,15 @@ const stockSubcommands: Subcommand[] = [
   },
   { name: "direction", summary: "盤勢方向判定 — 波動走多少、還剩多少空間" },
   { name: "fomo-tw", summary: "PTT Stock 股版貼文 + 推文數" },
-];
+] as CLICommand[];
 
 const stockHelp: HelpConfig = {
   cliName: "use-stock",
   tagline: "Taiwan stock & TX futures CLI toolkit",
-  subcommands: stockSubcommands,
+  commands: stockCLICommands,
   globalOptions: [
     { flag: "--help", arg: "", desc: "Show this help message" },
-    { flag: "--json", desc: "Most subcommands accept this for JSON output" },
+    { flag: "--json", desc: "Most commands accept this for JSON output" },
   ],
   globalExamples: [
     "use-stock price 2330 --timeframe 1m",
@@ -146,10 +146,10 @@ console.log("");
 console.log("=".repeat(60));
 console.log("  PER-COMMAND HELP (co-chrome click)");
 console.log("=".repeat(60));
-console.log(generateCommandHelp("co-chrome", chromeSubcommands[1]!));
+console.log(generateCommandHelp("co-chrome", chromeCLICommands[1]!));
 console.log("");
 
 console.log("=".repeat(60));
 console.log("  PER-COMMAND HELP (use-stock price)");
 console.log("=".repeat(60));
-console.log(generateCommandHelp("use-stock", stockSubcommands[4]!));
+console.log(generateCommandHelp("use-stock", stockCLICommands[4]!));

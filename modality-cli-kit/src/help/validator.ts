@@ -5,7 +5,7 @@
  * "Unknown flag --confg. Did you mean --config?" instead of silent failure.
  */
 
-import type { Subcommand, Option } from "./types";
+import type { CLICommand, Option } from "./types";
 
 // ── Levenshtein distance ───────────────────────────────────────────────────
 
@@ -67,27 +67,27 @@ export function fuzzySuggestion(input: string, candidates: string[]): string | n
 
 // ── Default global flags ────────────────────────────────────────────────
 
-/** Global flags accepted by all subcommands unless overridden. */
+/** Global flags accepted by all commands unless overridden. */
 export const DEFAULT_GLOBAL_FLAGS = new Set(["--help", "-h", "--json", "--no-cache"]);
 
 // ── Known-flag extraction ─────────────────────────────────────────────────
 
 /**
- * Extract the set of known flags for a subcommand.
+ * Extract the set of known flags for a command.
  *
- * @param subcommand  The subcommand descriptor (or `null`/`undefined` for top-level)
+ * @param command     The command descriptor (or `null`/`undefined` for top-level)
  * @param extraFlags  Additional global flags beyond the defaults
  * @returns           Array of flag strings (e.g. `["--help", "-h", "--config", "--json"]`)
  */
 export function knownFlags(
-  subcommand: Subcommand | null | undefined,
+  command: CLICommand | null | undefined,
   extraFlags?: string[],
 ): string[] {
   const flags = new Set(DEFAULT_GLOBAL_FLAGS);
   if (extraFlags) for (const f of extraFlags) flags.add(f);
 
-  if (subcommand) {
-    for (const option of subcommand.options ?? []) {
+  if (command) {
+    for (const option of command.options ?? []) {
       const tokens = option.flag.match(/--[\w][\w-]*/g);
       if (tokens) for (const t of tokens) flags.add(t);
       // Also add bare positional flags (e.g. "list", "show <id>")
@@ -105,22 +105,22 @@ export function knownFlags(
 // ── Unknown-flag rejection ─────────────────────────────────────────────────
 
 /**
- * Validate CLI args against known flags for a subcommand.
+ * Validate CLI args against known flags for a command.
  * Returns human-readable warning lines for any unknown flags.
  *
  * A `--` token ends flag processing (args after `--` are positional).
  *
- * @param subcommand  The subcommand descriptor (or `null`/`undefined` for top-level)
+ * @param command     The command descriptor (or `null`/`undefined` for top-level)
  * @param args        The raw argument tokens to validate
  * @param extraFlags  Additional global flags (e.g. "--format")
  * @returns           Array of warning strings (empty = no issues)
  */
 export function rejectUnknownFlags(
-  subcommand: Subcommand | null | undefined,
+  command: CLICommand | null | undefined,
   args: string[],
   extraFlags?: string[],
 ): string[] {
-  const known = knownFlags(subcommand, extraFlags);
+  const known = knownFlags(command, extraFlags);
   const warnings: string[] = [];
 
   let ended = false;
@@ -155,10 +155,10 @@ export function rejectUnknownFlags(
 
 // ── Convenience: build the CLI-level rejection dispatcher ──────────────────
 
-type SubcommandMap = Record<string, Subcommand>;
+type CLICommandMap = Record<string, CLICommand>;
 
 /**
- * Create a flag-rejection function for a full CLI with many subcommands.
+ * Create a flag-rejection function for a full CLI with many commands.
  *
  * ```ts
  * const reject = buildFlagRejector(subcommands);
@@ -166,11 +166,16 @@ type SubcommandMap = Record<string, Subcommand>;
  * ```
  */
 export function buildFlagRejector(
-  subcommands: Subcommand[],
+  commands: CLICommand[],
   extraFlags?: string[],
 ): (name: string, args: string[]) => string[] {
-  const map: SubcommandMap = {};
-  for (const sc of subcommands) map[sc.name] = sc;
+  const map: CLICommandMap = {};
+  for (const cmd of commands) {
+    if (!cmd.name) {
+      throw new Error("buildFlagRejector: every CLICommand must have a `name`.");
+    }
+    map[cmd.name] = cmd;
+  }
 
   return (name: string, args: string[]): string[] => {
     return rejectUnknownFlags(map[name] ?? null, args, extraFlags);

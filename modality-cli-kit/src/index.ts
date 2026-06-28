@@ -1,12 +1,12 @@
 // ── CLI Help Kit ────────────────────────────────────────────────────────────
-// Direct re-exports so consumers can import { Subcommand, generateHelp, ... }
-// from "modality-cli-kit" without needing a /help sub-path.
-export type { Subcommand, Option, HelpConfig, KeyOverride } from "./help/types";
-export type { CliToolMeta, BuildCliFromToolsOptions, CliBuildResult } from "./help/cli-builder";
+// Direct re-exports so consumers can import from "modality-cli-kit"
+// without needing a /help sub-path.
+export type { CLICommand, Option, HelpConfig, KeyOverride } from "./help/types";
+export type { BuildCliFromToolsOptions, CliBuildResult } from "./help/cli-builder";
 export {
   generateHelp,
   generateCommandHelp,
-  renderSubcommand,
+  renderCLICommand,
   renderSection,
   // Colors
   color,
@@ -43,8 +43,8 @@ export {
   schemaToCliOptions,
   toKebab,
   parseCliArgs,
-  validateSubcommandArgs,
-  buildSubcommandValidator,
+  validateCLICommandArgs,
+  buildCLICommandValidator,
   // CLI Builder
   buildCliFromTools,
 } from "./help";

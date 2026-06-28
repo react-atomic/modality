@@ -3,6 +3,7 @@
  */
 
 import type { z } from "zod";
+import type { AITool } from "modality-mcp-kit";
 
 /** A single CLI option / flag */
 export interface Option {
@@ -28,7 +29,7 @@ export interface Option {
 
 /**
  * Per-field CLI override controlling how a schema key maps to the CLI.
- * Used by `schemaToCliOptions` and `CliToolMeta.keyMap`.
+ * Used by `schemaToCliOptions` and `CLICommand.keyMap`.
  */
 export interface KeyOverride {
   /** Explicit `--flag` / `-f` string (overrides the derived flag name). */
@@ -37,26 +38,52 @@ export interface KeyOverride {
   arg?: string;
   /** When set, route this field into positionals at the given index. */
   position?: number;
-  /** When `true` the field is excluded from CLI flag/positional generation entirely. */
+  /**
+   * When `true` the field is excluded from CLI flag/positional generation
+   * entirely — it won't appear in help and is rejected as an unknown flag if
+   * passed. A required (non-optional) field that is hidden cannot be supplied
+   * via the CLI, so it must be populated programmatically.
+   */
   hidden?: boolean;
 }
 
-/** A CLI subcommand */
-export interface Subcommand {
-  /** Subcommand name, e.g. "price", "open", "verify" */
-  name: string;
-  /** One-line summary shown in the subcommand index */
-  summary: string;
-  /** Subcommand-specific options (excludes global options) */
+/**
+ * CLI command definition — the single canonical type for both schema-driven
+ * and manual commands.
+ *
+ * **Schema-driven usage** (has `inputSchema`):
+ * - `positionalKeys` and `keyMap` declare how schema fields map to the CLI
+ * - `buildCliFromTools` enriches `options`/`positionals` from `inputSchema`
+ *
+ * **Manual usage** (no `inputSchema`):
+ * - Set `options` and `positionals` as `Option[]` directly
+ * - Used for ad-hoc commands like `verify`, `e2e` that aren't in the tool registry
+ */
+export interface CLICommand extends AITool<any, z.ZodTypeAny> {
+  /** One-line summary shown in the command index (falls back to `description`). */
+  summary?: string;
+  /** Command-specific options (excludes global options). */
   options?: Option[];
-  /** Ordered positional arguments (displayed in help, validated in args) */
+  /** Ordered positional arguments (displayed in help, validated in args). */
   positionals?: Option[];
-  /** Custom usage lines (optional). If omitted, generates `cliName subcommand [options]` */
+  /** Custom usage lines (optional). If omitted, generates `cliName command [options]`. */
   usage?: string[];
-  /** Example invocations */
+  /** Example invocations. */
   examples?: string[];
-  /** Pre-built Zod object schema for validation (bypasses optionsToSchema inference) */
+  /** Pre-built Zod object schema for validation (bypasses optionsToSchema inference). */
   schema?: z.ZodTypeAny;
+
+  // ── Schema-driven metadata (only relevant when `inputSchema` is set) ──
+
+  /** Which `inputSchema` keys are positional args (in declaration order). */
+  positionalKeys?: string[];
+  /** Per-field overrides (flag name, arg placeholder, hidden). */
+  keyMap?: Record<string, KeyOverride>;
+
+  // ── CLI metadata ──────────────────────────────────────────────────────
+
+  /** Alternative command names that map to this tool. */
+  aliases?: string[];
 }
 
 /** Global help page configuration */
@@ -65,9 +92,9 @@ export interface HelpConfig {
   cliName: string;
   /** One-line tagline shown at the top, e.g. "Taiwan stock & TX futures CLI toolkit" */
   tagline: string;
-  /** All subcommands to list */
-  subcommands: Subcommand[];
-  /** Subcommands sorted? If false, sorts alphabetically. */
+  /** All commands to list */
+  commands: CLICommand[];
+  /** Commands sorted? If false, sorts alphabetically. */
   sorted?: boolean;
   /** Global options shown at the bottom of help */
   globalOptions?: Option[];
@@ -75,7 +102,7 @@ export interface HelpConfig {
   globalExamples?: string[];
   /** Footer text (e.g. "Set NO_COLOR=1 to disable colors") */
   footer?: string;
-  /** Minimum column width for subcommand name (default: 16) */
+  /** Minimum column width for command name (default: 16) */
   colNameWidth?: number;
   /** Flag column width in compact mode (default: 22) */
   flagWidthCompact?: number;

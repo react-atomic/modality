@@ -4,12 +4,13 @@ import {
   inferOptionType,
   optionsToSchema,
   parseCliArgs,
-  validateSubcommandArgs,
-  buildSubcommandValidator,
+  validateCLICommandArgs,
+  buildCLICommandValidator,
   schemaToCliOptions,
   toKebab,
 } from "../zod-cli";
-import type { Option, Subcommand } from "../types";
+import type { Option, CLICommand } from "../types";
+import { makeCmd } from "./helpers";
 
 // ── inferOptionType ──────────────────────────────────────────────────
 
@@ -199,6 +200,30 @@ describe("schemaToCliOptions", () => {
     expect(options).toHaveLength(0);
     expect(positionals.map((p) => p.flag)).toEqual(["--symbol", "--amount"]);
   });
+
+  test("keyMap hidden excludes a field from options", () => {
+    const schema = z.object({
+      config: z.string().optional(),
+      token: z.string().optional(),
+    });
+    const { options } = schemaToCliOptions(schema, {
+      token: { hidden: true },
+    });
+    expect(options.map((o) => o.flag)).toEqual(["--config"]);
+  });
+
+  test("keyMap hidden excludes a field from positionals", () => {
+    const schema = z.object({
+      id: z.string(),
+      secret: z.string(),
+    });
+    const { options, positionals } = schemaToCliOptions(schema, {
+      id: { position: 0 },
+      secret: { position: 1, hidden: true },
+    });
+    expect(options).toHaveLength(0);
+    expect(positionals.map((p) => p.flag)).toEqual(["--id"]);
+  });
 });
 
 // ── parseCliArgs ─────────────────────────────────────────────────────
@@ -311,10 +336,10 @@ describe("parseCliArgs", () => {
   });
 });
 
-// ── validateSubcommandArgs ───────────────────────────────────────────
+// ── validateCLICommandArgs ───────────────────────────────────────────
 
-describe("validateSubcommandArgs", () => {
-  const sample: Subcommand = {
+describe("validateCLICommandArgs", () => {
+  const sample: CLICommand = makeCmd({
     name: "price",
     summary: "Price analysis",
     options: [
@@ -322,10 +347,10 @@ describe("validateSubcommandArgs", () => {
       { flag: "--lookback", arg: "<N>", desc: "Lookback window" },
       { flag: "--json", desc: "JSON output" },
     ],
-  };
+  });
 
-  test("validates subcommand args against its options", () => {
-    const { data, warnings } = validateSubcommandArgs(sample, [
+  test("validates command args against its options", () => {
+    const { data, warnings } = validateCLICommandArgs(sample, [
       "--timeframe", "5m",
       "--json",
     ]);
@@ -334,25 +359,25 @@ describe("validateSubcommandArgs", () => {
     expect(warnings).toEqual([]);
   });
 
-  test("returns empty for null/undefined subcommand", () => {
-    expect(validateSubcommandArgs(null, ["--json"]).warnings).toEqual([]);
-    expect(validateSubcommandArgs(undefined, ["--json"]).warnings).toEqual([]);
+  test("returns empty for null/undefined command", () => {
+    expect(validateCLICommandArgs(null, ["--json"]).warnings).toEqual([]);
+    expect(validateCLICommandArgs(undefined, ["--json"]).warnings).toEqual([]);
   });
 
-  test("detects unknown flag in subcommand", () => {
-    const { warnings } = validateSubcommandArgs(sample, ["--timefram"]);
+  test("detects unknown flag in command", () => {
+    const { warnings } = validateCLICommandArgs(sample, ["--timefram"]);
     expect(warnings.length).toBeGreaterThan(0);
     expect(warnings[0]).toContain("Did you mean");
   });
 
-  test("handles subcommand with no options — global flags pass through", () => {
-    const noOpts: Subcommand = { name: "open", summary: "Open URL" };
-    const result = validateSubcommandArgs(noOpts, ["--help", "--json"]);
+  test("handles command with no options — global flags pass through", () => {
+    const noOpts: CLICommand = makeCmd({ name: "open", summary: "Open URL" });
+    const result = validateCLICommandArgs(noOpts, ["--help", "--json"]);
     expect(result.warnings).toEqual([]);
   });
 
   // ── positionals ────────────────────────────────────────────────────
-  const withPositionals: Subcommand = {
+  const withPositionals: CLICommand = makeCmd({
     name: "convert",
     summary: "Convert a value",
     positionals: [
@@ -360,26 +385,26 @@ describe("validateSubcommandArgs", () => {
       { flag: "amount", arg: "<N>", desc: "Amount", type: "number" },
     ],
     options: [{ flag: "--json", desc: "JSON output" }],
-  };
+  });
 
   test("maps positionals onto their keys (success path)", () => {
-    const { data, warnings } = validateSubcommandArgs(withPositionals, ["BTC", "5"]);
+    const { data, warnings } = validateCLICommandArgs(withPositionals, ["BTC", "5"]);
     expect(data.symbol).toBe("BTC");
     expect(warnings).toEqual([]);
   });
 
   test("coerces a typed positional", () => {
-    const { data } = validateSubcommandArgs(withPositionals, ["BTC", "5"]);
+    const { data } = validateCLICommandArgs(withPositionals, ["BTC", "5"]);
     expect(data.amount).toBe(5); // number, not "5"
   });
 
   test("required positional missing produces a validation warning", () => {
-    const { warnings } = validateSubcommandArgs(withPositionals, []);
+    const { warnings } = validateCLICommandArgs(withPositionals, []);
     expect(warnings.some((w) => w.startsWith("symbol"))).toBe(true);
   });
 
   test("positionals coexist with flags", () => {
-    const { data, warnings } = validateSubcommandArgs(withPositionals, [
+    const { data, warnings } = validateCLICommandArgs(withPositionals, [
       "ETH", "10", "--json",
     ]);
     expect(data.symbol).toBe("ETH");
@@ -390,76 +415,76 @@ describe("validateSubcommandArgs", () => {
 
   // ── pre-built schema override ──────────────────────────────────────
   test("uses a pre-built ZodObject schema directly", () => {
-    const custom: Subcommand = {
+    const custom: CLICommand = makeCmd({
       name: "custom",
       summary: "Custom",
       schema: z.object({ token: z.string().optional() }),
-    };
-    const { data, warnings } = validateSubcommandArgs(custom, ["--token", "abc"]);
+    });
+    const { data, warnings } = validateCLICommandArgs(custom, ["--token", "abc"]);
     expect(data.token).toBe("abc");
     expect(warnings).toEqual([]);
   });
 
   test("a positional sharing an option's name does not clobber the option", () => {
-    const collide: Subcommand = {
+    const collide: CLICommand = makeCmd({
       name: "collide",
       summary: "Collide",
       options: [{ flag: "--symbol", arg: "<S>", desc: "Symbol" }],
       positionals: [{ flag: "symbol", desc: "Symbol" }],
-    };
-    const { data, warnings } = validateSubcommandArgs(collide, ["--symbol", "BTC"]);
+    });
+    const { data, warnings } = validateCLICommandArgs(collide, ["--symbol", "BTC"]);
     expect(data.symbol).toBe("BTC");
     expect(warnings).toEqual([]);
   });
 
   test("ignores a non-ZodObject schema and falls back to options", () => {
-    const bad: Subcommand = {
+    const bad: CLICommand = makeCmd({
       name: "bad",
       summary: "Bad",
       schema: z.string(), // not a ZodObject — must not wipe out option inference
       options: [{ flag: "--json", desc: "JSON output" }],
-    };
-    const { data, warnings } = validateSubcommandArgs(bad, ["--json"]);
+    });
+    const { data, warnings } = validateCLICommandArgs(bad, ["--json"]);
     expect(data.json).toBe(true);
     expect(warnings).toEqual([]);
   });
 });
 
-// ── buildSubcommandValidator ─────────────────────────────────────────
+// ── buildCLICommandValidator ─────────────────────────────────────────
 
-describe("buildSubcommandValidator", () => {
-  const subcommands: Subcommand[] = [
-    { name: "open", summary: "Open URL" },
-    {
+describe("buildCLICommandValidator", () => {
+  const commands: CLICommand[] = [
+    makeCmd({ name: "open", summary: "Open URL" }),
+    makeCmd({
       name: "price",
       summary: "Price",
       options: [
         { flag: "--timeframe", arg: "<TF>", desc: "TF" },
         { flag: "--json", desc: "JSON" },
       ],
-    },
+    }),
   ];
 
   test("returns a validator function", () => {
-    const validate = buildSubcommandValidator(subcommands);
+    const validate = buildCLICommandValidator(commands);
     expect(typeof validate).toBe("function");
   });
 
-  test("validates args for a known subcommand", () => {
-    const validate = buildSubcommandValidator(subcommands);
+  test("validates args for a known command", () => {
+    const validate = buildCLICommandValidator(commands);
     const { data, warnings } = validate("price", ["--timeframe", "1h"]);
     expect(data.timeframe).toBe("1h");
     expect(warnings).toEqual([]);
   });
 
-  test("passes through global flags for unknown subcommand", () => {
-    const validate = buildSubcommandValidator(subcommands);
+  test("passes through global flags for unknown command", () => {
+    const validate = buildCLICommandValidator(commands);
     const result = validate("nonexistent", ["--help"]);
     expect(result.warnings).toEqual([]);
   });
 
-  test("rejects unknown flags for known subcommand", () => {
-    const validate = buildSubcommandValidator(subcommands);
+  test("rejects unknown flags for known command", () => {
+    const validate = buildCLICommandValidator(commands);
     const { warnings } = validate("price", ["--timefram"]);
     expect(warnings.length).toBeGreaterThan(0);
   });

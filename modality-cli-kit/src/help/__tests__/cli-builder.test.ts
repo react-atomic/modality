@@ -23,6 +23,9 @@ const tools = [
       amount: z.coerce.number().describe("Amount"),
       json: z.boolean().optional().describe("JSON output"),
     }),
+    aliases: ["cv"],
+    positionalKeys: ["symbol", "amount"],
+    examples: ["my-cli convert BTC 5"],
   },
 ];
 
@@ -30,31 +33,24 @@ const build = () =>
   buildCliFromTools(tools, {
     cliName: "my-cli",
     tagline: "My awesome CLI",
-    toolAnnotations: {
-      convert: {
-        positionals: ["symbol", "amount"],
-        aliases: ["cv"],
-        examples: ["my-cli convert BTC 5"],
-      },
-    },
   });
 
 describe("buildCliFromTools", () => {
-  test("derives one subcommand per named tool", () => {
+  test("derives one command per named tool", () => {
     const cli = build();
-    expect(cli.subcommands.map((s) => s.name)).toEqual(["click", "convert"]);
+    expect(cli.commands.map((s) => s.name)).toEqual(["click", "convert"]);
   });
 
   test("maps schema fields to flag options", () => {
     const cli = build();
-    const click = cli.subcommands.find((s) => s.name === "click")!;
+    const click = cli.commands.find((s) => s.name === "click")!;
     expect(click.options!.map((o) => o.flag)).toContain("--selector");
     expect(click.options!.map((o) => o.flag)).toContain("--force");
   });
 
   test("annotated positionals become positional args, not flags", () => {
     const cli = build();
-    const convert = cli.subcommands.find((s) => s.name === "convert")!;
+    const convert = cli.commands.find((s) => s.name === "convert")!;
     expect(convert.positionals!.map((p) => p.flag)).toEqual(["symbol", "amount"]);
     // symbol/amount must NOT also appear as flags
     expect(convert.options!.map((o) => o.flag)).not.toContain("--symbol");
@@ -70,7 +66,7 @@ describe("buildCliFromTools", () => {
       cliName: "x",
       tagline: "x",
     });
-    expect(cli.subcommands).toHaveLength(0);
+    expect(cli.commands).toHaveLength(0);
   });
 
   test("getHelp() renders the global help page", () => {
@@ -86,6 +82,17 @@ describe("buildCliFromTools", () => {
     expect(help).toContain("my-cli convert");
     expect(help).toContain("<symbol>");
     expect(help).toContain("Asset symbol");
+  });
+
+  test("passes custom usage lines through as flat strings", () => {
+    const cli = buildCliFromTools(
+      [{ name: "convert", description: "Convert", usage: ["my-cli convert <symbol> <amount>"] }],
+      { cliName: "my-cli", tagline: "t" },
+    );
+    const convert = cli.commands.find((s) => s.name === "convert")!;
+    // Must stay a flat string[], not get re-wrapped into string[][].
+    expect(convert.usage).toEqual(["my-cli convert <symbol> <amount>"]);
+    expect(cli.getHelp("convert")).toContain("my-cli convert <symbol> <amount>");
   });
 
   test("getHelp(alias) resolves to the canonical command", () => {
@@ -118,5 +125,56 @@ describe("buildCliFromTools", () => {
       }),
     });
     expect(cli.helpConfig.globalOptions!.map((o) => o.flag)).toContain("--verbose");
+  });
+
+  test("skipFields excludes a field from every tool's options", () => {
+    const cli = buildCliFromTools(
+      [
+        {
+          name: "convert",
+          description: "Convert a value",
+          inputSchema: z.object({
+            symbol: z.string().describe("Asset symbol"),
+            amount: z.coerce.number().describe("Amount"),
+            json: z.boolean().optional().describe("JSON output"),
+          }),
+        },
+      ],
+      { cliName: "my-cli", tagline: "t", skipFields: ["json"] },
+    );
+    const convert = cli.commands.find((s) => s.name === "convert")!;
+    expect(convert.options!.map((o) => o.flag)).not.toContain("--json");
+    // non-skipped fields are unaffected
+    expect(convert.options!.map((o) => o.flag)).toContain("--amount");
+  });
+
+  test("skipFields applies even to tools without annotations", () => {
+    const cli = buildCliFromTools(tools, {
+      cliName: "my-cli",
+      tagline: "t",
+      skipFields: ["force"],
+    });
+    const click = cli.commands.find((s) => s.name === "click")!;
+    expect(click.options!.map((o) => o.flag)).not.toContain("--force");
+    expect(click.options!.map((o) => o.flag)).toContain("--selector");
+  });
+
+  test("per-tool keyMap hidden:false un-hides a globally skipped field", () => {
+    const cli = buildCliFromTools(
+      [
+        {
+          name: "convert",
+          description: "Convert a value",
+          inputSchema: z.object({
+            symbol: z.string().describe("Asset symbol"),
+            json: z.boolean().optional().describe("JSON output"),
+          }),
+          keyMap: { json: { hidden: false } },
+        },
+      ],
+      { cliName: "my-cli", tagline: "t", skipFields: ["json"] },
+    );
+    const convert = cli.commands.find((s) => s.name === "convert")!;
+    expect(convert.options!.map((o) => o.flag)).toContain("--json");
   });
 });

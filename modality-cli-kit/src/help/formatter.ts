@@ -33,11 +33,11 @@ export function flagPad(flagDisplayWidth: number, compact: boolean): string {
   return " ".repeat(Math.max(2, target - flagDisplayWidth));
 }
 
-/** Default subcommand name column width. */
+/** Default command name column width. */
 export const DEFAULT_COL_NAME_WIDTH = 16;
 
 /**
- * Right-pad a subcommand name to the configured column width.
+ * Right-pad a command name to the configured column width.
  */
 export function padName(s: string, width: number = DEFAULT_COL_NAME_WIDTH): string {
   return s.length >= width ? s : s + " ".repeat(width - s.length);

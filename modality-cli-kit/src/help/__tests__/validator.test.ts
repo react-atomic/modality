@@ -5,9 +5,10 @@ import {
   rejectUnknownFlags,
   buildFlagRejector,
 } from "../validator";
-import type { Subcommand } from "../types";
+import type { CLICommand } from "../types";
+import { makeCmd } from "./helpers";
 
-const sample: Subcommand = {
+const sample: CLICommand = makeCmd({
   name: "price",
   summary: "Price analysis",
   options: [
@@ -15,7 +16,7 @@ const sample: Subcommand = {
     { flag: "--lookback", arg: "<N>", desc: "Lookback window" },
     { flag: "--json", desc: "JSON output" },
   ],
-};
+});
 
 describe("levenshtein", () => {
   test("identical strings", () => {
@@ -50,7 +51,7 @@ describe("knownFlags", () => {
     expect(flags).toContain("--json");
   });
 
-  test("includes subcommand options", () => {
+  test("includes command options", () => {
     const flags = knownFlags(sample);
     expect(flags).toContain("--timeframe");
     expect(flags).toContain("--lookback");
@@ -62,7 +63,7 @@ describe("knownFlags", () => {
     expect(jsonFlags).toHaveLength(1);
   });
 
-  test("accepts null/undefined subcommand", () => {
+  test("accepts null/undefined command", () => {
     const flags = knownFlags(undefined);
     expect(flags).toContain("--help");
   });
@@ -107,7 +108,7 @@ describe("rejectUnknownFlags", () => {
     expect(warnings[0]).toContain("short flags not supported");
   });
 
-  test("handles null subcommand (top-level args)", () => {
+  test("handles null command (top-level args)", () => {
     const warnings = rejectUnknownFlags(null, ["--confg"]);
     // --confg is not in the default global flags
     expect(warnings.length).toBeGreaterThan(0);
@@ -115,32 +116,37 @@ describe("rejectUnknownFlags", () => {
 });
 
 describe("buildFlagRejector", () => {
-  const subcommands: Subcommand[] = [
-    { name: "open", summary: "Open URL" },
-    {
+  const commands: CLICommand[] = [
+    makeCmd({ name: "open", summary: "Open URL" }),
+    makeCmd({
       name: "price",
       summary: "Price",
       options: [
         { flag: "--timeframe", arg: "<TF>", desc: "TF" },
         { flag: "--lookback", arg: "<N>", desc: "LB" },
       ],
-    },
+    }),
   ];
 
   test("returns rejector function", () => {
-    const reject = buildFlagRejector(subcommands);
+    const reject = buildFlagRejector(commands);
     expect(typeof reject).toBe("function");
   });
 
-  test("rejects unknown flags for a known subcommand", () => {
-    const reject = buildFlagRejector(subcommands);
+  test("rejects unknown flags for a known command", () => {
+    const reject = buildFlagRejector(commands);
     const warnings = reject("price", ["--timefram"]);
     expect(warnings.length).toBeGreaterThan(0);
   });
 
   test("returns empty for top-level command", () => {
-    const reject = buildFlagRejector(subcommands);
+    const reject = buildFlagRejector(commands);
     const warnings = reject("nonexistent", ["--help"]);
     expect(warnings).toEqual([]);
+  });
+
+  test("throws when a command has no name", () => {
+    const nameless = { summary: "no name" } as CLICommand;
+    expect(() => buildFlagRejector([nameless])).toThrow(/must have a `name`/);
   });
 });

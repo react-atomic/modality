@@ -6,13 +6,13 @@
  * ```ts
  * import { generateHelp, generateCommandHelp } from "modality-cli-kit/help";
  *
- * const subcommands = [
+ * const commands = [
  *   { name: "open",  summary: "Navigate to a URL" },
  *   { name: "click", summary: "Click an element", options: [{ flag: "--selector", arg: "<sel>", desc: "CSS selector" }] },
  * ];
  *
- * console.log(generateHelp({ cliName: "my-cli", tagline: "My tool", subcommands }));
- * console.log(generateCommandHelp("my-cli", subcommands[1]));
+ * console.log(generateHelp({ cliName: "my-cli", tagline: "My tool", commands }));
+ * console.log(generateCommandHelp("my-cli", commands[1]));
  * ```
  */
 
@@ -34,13 +34,13 @@ export {
 } from "./colors";
 
 // Types
-export type { Option, Subcommand, HelpConfig, KeyOverride } from "./types";
+export type { Option, CLICommand, HelpConfig, KeyOverride } from "./types";
 
 // Generator
 export {
   generateHelp,
   generateCommandHelp,
-  renderSubcommand,
+  renderCLICommand,
   renderSection,
 } from "./generator";
 
@@ -72,10 +72,10 @@ export {
   schemaToCliOptions,
   toKebab,
   parseCliArgs,
-  validateSubcommandArgs,
-  buildSubcommandValidator,
+  validateCLICommandArgs,
+  buildCLICommandValidator,
 } from "./zod-cli";
 
 // CLI Builder
 export { buildCliFromTools } from "./cli-builder";
-export type { CliToolMeta, BuildCliFromToolsOptions, CliBuildResult } from "./cli-builder";
+export type { BuildCliFromToolsOptions, CliBuildResult } from "./cli-builder";

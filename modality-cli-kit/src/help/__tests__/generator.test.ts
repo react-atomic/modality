@@ -3,18 +3,19 @@ import { setNoColor } from "../colors";
 import {
   generateHelp,
   generateCommandHelp,
-  renderSubcommand,
+  renderCLICommand,
   renderSection,
 } from "../generator";
-import type { Subcommand, HelpConfig } from "../types";
+import type { CLICommand, HelpConfig } from "../types";
+import { makeCmd } from "./helpers";
 
 // Disable colors for deterministic string comparison
 setNoColor(true);
 
-const sampleSubcommands: Subcommand[] = [
-  { name: "open", summary: "Navigate to a URL" },
-  { name: "click", summary: "Click an element" },
-  {
+const sampleCLICommands: CLICommand[] = [
+  makeCmd({ name: "open", summary: "Navigate to a URL" }),
+  makeCmd({ name: "click", summary: "Click an element" }),
+  makeCmd({
     name: "price",
     summary: "Price analysis",
     options: [
@@ -22,13 +23,13 @@ const sampleSubcommands: Subcommand[] = [
       { flag: "--lookback", arg: "<N>", desc: "Lookback window" },
     ],
     examples: ["my-cli price 2330", "my-cli price TXF-S"],
-  },
+  }),
 ];
 
 const sampleConfig: HelpConfig = {
   cliName: "my-cli",
   tagline: "My CLI tool",
-  subcommands: sampleSubcommands,
+  commands: sampleCLICommands,
   globalOptions: [
     { flag: "--help", arg: "", desc: "Show help" },
     { flag: "--json", desc: "JSON output" },
@@ -43,7 +44,7 @@ describe("generateHelp", () => {
     expect(help).toContain("My CLI tool");
   });
 
-  test("lists all subcommands", () => {
+  test("lists all commands", () => {
     const help = generateHelp(sampleConfig);
     expect(help).toContain("open");
     expect(help).toContain("click");
@@ -72,13 +73,13 @@ describe("generateHelp", () => {
     expect(help).toContain("<command> --help");
   });
 
-  test("sorts subcommands alphabetically by default", () => {
+  test("sorts commands alphabetically by default", () => {
     const help = generateHelp({
       ...sampleConfig,
-      subcommands: [
-        { name: "zeta", summary: "Z" },
-        { name: "alpha", summary: "A" },
-        { name: "beta", summary: "B" },
+      commands: [
+        makeCmd({ name: "zeta", summary: "Z" }),
+        makeCmd({ name: "alpha", summary: "A" }),
+        makeCmd({ name: "beta", summary: "B" }),
       ],
     });
     // sorted: alpha, beta, zeta
@@ -93,9 +94,9 @@ describe("generateHelp", () => {
     const help = generateHelp({
       ...sampleConfig,
       sorted: false,
-      subcommands: [
-        { name: "zeta", summary: "Z" },
-        { name: "alpha", summary: "A" },
+      commands: [
+        makeCmd({ name: "zeta", summary: "Z" }),
+        makeCmd({ name: "alpha", summary: "A" }),
       ],
     });
     const zetaIdx = help.indexOf("zeta");
@@ -103,8 +104,8 @@ describe("generateHelp", () => {
     expect(zetaIdx).toBeLessThan(alphaIdx);
   });
 
-  test("handles empty subcommands", () => {
-    const help = generateHelp({ ...sampleConfig, subcommands: [] });
+  test("handles empty commands", () => {
+    const help = generateHelp({ ...sampleConfig, commands: [] });
     expect(help).toContain("my-cli");
   });
 
@@ -125,9 +126,9 @@ describe("generateHelp", () => {
     expect(help).toContain("NO_COLOR");
   });
 
-  test("empty subcommand list still renders header", () => {
-    const out = renderSubcommand(
-      { name: "test", summary: "Test command" },
+  test("empty command list still renders header", () => {
+    const out = renderCLICommand(
+      makeCmd({ name: "test", summary: "Test command" }),
       16,
       true,
     );
@@ -136,12 +137,8 @@ describe("generateHelp", () => {
   });
 
   test("non-compact mode renders positionals beneath the summary", () => {
-    const out = renderSubcommand(
-      {
-        name: "convert",
-        summary: "Convert a value",
-        positionals: [{ flag: "symbol", desc: "Asset symbol" }],
-      },
+    const out = renderCLICommand(
+      makeCmd({ name: "convert", summary: "Convert a value", positionals: [{ flag: "symbol", desc: "Asset symbol" }] }),
       16,
       false,
     );
@@ -151,51 +148,51 @@ describe("generateHelp", () => {
 });
 
 describe("generateCommandHelp", () => {
-  test("includes CLI name and subcommand name", () => {
-    const help = generateCommandHelp("my-cli", sampleSubcommands[2]!);
+  test("includes CLI name and command name", () => {
+    const help = generateCommandHelp("my-cli", sampleCLICommands[2]!);
     expect(help).toContain("my-cli price");
     expect(help).toContain("Price analysis");
   });
 
-  test("includes subcommand with no options", () => {
-    const help = generateCommandHelp("my-cli", sampleSubcommands[0]!);
+  test("includes command with no options", () => {
+    const help = generateCommandHelp("my-cli", sampleCLICommands[0]!);
     expect(help).toContain("my-cli open");
     expect(help).toContain("Navigate to a URL");
   });
 
   test("includes options section", () => {
-    const help = generateCommandHelp("my-cli", sampleSubcommands[2]!);
+    const help = generateCommandHelp("my-cli", sampleCLICommands[2]!);
     expect(help).toContain("--timeframe");
     expect(help).toContain("--lookback");
     expect(help).toContain("Candle timeframe");
   });
 
   test("includes examples", () => {
-    const help = generateCommandHelp("my-cli", sampleSubcommands[2]!);
+    const help = generateCommandHelp("my-cli", sampleCLICommands[2]!);
     expect(help).toContain("my-cli price 2330");
     expect(help).toContain("my-cli price TXF-S");
   });
 
   test("appends global options when provided", () => {
-    const help = generateCommandHelp("my-cli", sampleSubcommands[0]!, [
+    const help = generateCommandHelp("my-cli", sampleCLICommands[0]!, [
       { flag: "--json", desc: "JSON output" },
     ]);
     expect(help).toContain("--json");
   });
 
   test("uses custom usage lines", () => {
-    const sc: Subcommand = {
+    const command = makeCmd({
       name: "trade",
       summary: "Manage trades",
-      usage: ["my-cli trade <subcommand> [options]", "my-cli trade open --force"],
-    };
-    const help = generateCommandHelp("my-cli", sc);
-    expect(help).toContain("my-cli trade <subcommand>");
+      usage: ["my-cli trade <command> [options]", "my-cli trade open --force"],
+    });
+    const help = generateCommandHelp("my-cli", command);
+    expect(help).toContain("my-cli trade <command>");
     expect(help).toContain("my-cli trade open");
   });
 
   test("renders positionals in the usage line and an Arguments section", () => {
-    const sc: Subcommand = {
+    const command = makeCmd({
       name: "convert",
       summary: "Convert a value",
       positionals: [
@@ -203,8 +200,8 @@ describe("generateCommandHelp", () => {
         { flag: "amount", arg: "<N>", desc: "Amount", type: "number" },
       ],
       options: [{ flag: "--json", desc: "JSON output" }],
-    };
-    const help = generateCommandHelp("my-cli", sc);
+    });
+    const help = generateCommandHelp("my-cli", command);
     // Usage line lists positional slots before [options]
     expect(help).toContain("my-cli convert <symbol> <amount>");
     // Dedicated Arguments section documents each positional
