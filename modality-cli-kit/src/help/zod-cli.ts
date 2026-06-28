@@ -424,12 +424,41 @@ function mergeDefaultFlags(
 // ── CLICommand-level validation ─────────────────────────────────────
 
 /**
+ * Normalize a ZodObject's shape keys from camelCase to kebab-case so they
+ * match how CLI flag arguments are parsed (e.g. `--user-data-dir` maps to
+ * schema key `user-data-dir`, not `userDataDir`).
+ *
+ * Fields marked as `hidden` in `keyMap` are excluded from the returned schema
+ * so that hidden/skipped fields don't trigger validation failures for inputs
+ * that the user cannot supply via the CLI.
+ */
+export function normalizeSchemaKeys(
+  schema: z.ZodObject<Record<string, z.ZodTypeAny>>,
+  keyMap?: Record<string, KeyOverride>,
+): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  const shape = schema.shape;
+  const normalized: Record<string, z.ZodTypeAny> = {};
+  let changed = false;
+  let removed = false;
+  for (const [key, field] of Object.entries(shape)) {
+    // Exclude hidden fields — they cannot be supplied via CLI flags
+    if (keyMap?.[key]?.hidden) { removed = true; continue; }
+    const kebab = toKebab(key);
+    normalized[kebab] = field;
+    if (kebab !== key) changed = true;
+  }
+  // Must create a new ZodObject when keys were removed OR renamed
+  return (changed || removed) ? z.object(normalized) : schema;
+}
+
+/**
  * Convert a CLICommand definition's options into a Zod schema and validate CLI args.
  *
- * Uses `optionsToSchema` to infer the schema from the command's `options` array.
- * If `command.schema` is set, it is used directly (bypasses inference).
- * If `command.positionals` exists, positional fields are added to the schema.
- * Global default flags (--help, --json, --no-cache) are automatically included.
+ * When `command.inputSchema` is set on a ZodObject, it is used directly for
+ * validation (with keys normalized from camelCase to kebab-case).  Otherwise
+ * the schema is inferred from the command's `options` / `positionals` arrays
+ * via `optionsToSchema`.  Global default flags (--help, --json, --no-cache)
+ * are automatically included.
  * Returns both the typed parsed data and any validation warnings.
  *
  * @example
@@ -450,9 +479,16 @@ export function validateCLICommandArgs(
   const positionalKeys = positionals.map((pos) => pos.flag);
   let schema: z.ZodObject<Record<string, z.ZodTypeAny>>;
 
-  // Use a pre-built Zod object schema directly if provided (bypasses inference).
-  if (command?.schema instanceof z.ZodObject) {
-    schema = command.schema as z.ZodObject<Record<string, z.ZodTypeAny>>;
+  // Use inputSchema directly for validation when available (bypasses the
+  // lossy optionsToSchema reconstruction, preserving refinements and
+  // transforms). Keys are normalized to kebab-case so CLI flag tokens like
+  // "--user-data-dir" map to the correct shape key.  Hidden fields (from
+  // keyMap) are excluded so they don't cause false validation failures.
+  if (command?.inputSchema instanceof z.ZodObject) {
+    schema = normalizeSchemaKeys(
+      command.inputSchema as z.ZodObject<Record<string, z.ZodTypeAny>>,
+      command.keyMap,
+    );
   } else {
     const optsSchema = optionsToSchema(command?.options ?? []);
     // Merge positional fields into the options schema (skip name collisions).

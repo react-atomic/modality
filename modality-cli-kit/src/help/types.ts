@@ -70,9 +70,6 @@ export interface CLICommand extends AITool<any, z.ZodTypeAny> {
   usage?: string[];
   /** Example invocations. */
   examples?: string[];
-  /** Pre-built Zod object schema for validation (bypasses optionsToSchema inference). */
-  schema?: z.ZodTypeAny;
-
   // ── Schema-driven metadata (only relevant when `inputSchema` is set) ──
 
   /** Which `inputSchema` keys are positional args (in declaration order). */

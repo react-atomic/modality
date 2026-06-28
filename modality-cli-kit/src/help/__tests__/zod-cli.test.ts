@@ -8,6 +8,7 @@ import {
   buildCLICommandValidator,
   schemaToCliOptions,
   toKebab,
+  normalizeSchemaKeys,
 } from "../zod-cli";
 import type { Option, CLICommand } from "../types";
 import { makeCmd } from "./helpers";
@@ -226,6 +227,68 @@ describe("schemaToCliOptions", () => {
   });
 });
 
+// ── normalizeSchemaKeys ──────────────────────────────────────────────
+
+describe("normalizeSchemaKeys", () => {
+  test("returns the same schema when no keys change and no hidden fields", () => {
+    const input = z.object({ force: z.boolean(), timeout: z.coerce.number() });
+    const result = normalizeSchemaKeys(input);
+    expect(result).toBe(input);
+  });
+
+  test("normalizes camelCase keys to kebab-case", () => {
+    const input = z.object({ userDataDir: z.string() });
+    const result = normalizeSchemaKeys(input);
+    expect(result.shape).toHaveProperty("user-data-dir");
+    expect(result.shape).not.toHaveProperty("userDataDir");
+  });
+
+  test("excludes fields marked hidden in keyMap", () => {
+    const input = z.object({ visible: z.string(), secret: z.string() });
+    const result = normalizeSchemaKeys(input, { secret: { hidden: true } });
+    expect(result.shape).toHaveProperty("visible");
+    expect(result.shape).not.toHaveProperty("secret");
+  });
+
+  test("preserves non-hidden fields when some are hidden", () => {
+    const input = z.object({ a: z.string(), b: z.string(), c: z.string() });
+    const result = normalizeSchemaKeys(input, {
+      a: { hidden: true },
+      c: { hidden: true },
+    });
+    expect(result.shape).toHaveProperty("b");
+    expect(result.shape).not.toHaveProperty("a");
+    expect(result.shape).not.toHaveProperty("c");
+  });
+
+  test("handles combined hidden + renamed fields", () => {
+    const input = z.object({ visible: z.string(), hiddenField: z.string() });
+    const result = normalizeSchemaKeys(input, { hiddenField: { hidden: true } });
+    expect(result.shape).toHaveProperty("visible");
+    expect(result.shape).not.toHaveProperty("hiddenField");
+    expect(result).not.toBe(input);
+  });
+
+  test("normalizes and hides simultaneously", () => {
+    const input = z.object({ myField: z.string(), skipMe: z.string() });
+    const result = normalizeSchemaKeys(input, { skipMe: { hidden: true } });
+    expect(result.shape).toHaveProperty("my-field");
+    expect(result.shape).not.toHaveProperty("myField");
+    expect(result.shape).not.toHaveProperty("skipMe");
+  });
+
+  test("empty schema is a no-op", () => {
+    const input = z.object({});
+    expect(normalizeSchemaKeys(input)).toBe(input);
+  });
+
+  test("nullish keyMap does not affect output", () => {
+    const input = z.object({ name: z.string() });
+    expect(normalizeSchemaKeys(input, undefined)).toBe(input);
+    expect(normalizeSchemaKeys(input, {})).toBe(input);
+  });
+});
+
 // ── parseCliArgs ─────────────────────────────────────────────────────
 
 describe("parseCliArgs", () => {
@@ -413,12 +476,12 @@ describe("validateCLICommandArgs", () => {
     expect(warnings).toEqual([]);
   });
 
-  // ── pre-built schema override ──────────────────────────────────────
-  test("uses a pre-built ZodObject schema directly", () => {
+  // ── inputSchema-driven validation ────────────────────────────────────
+  test("uses inputSchema directly (with key normalization)", () => {
     const custom: CLICommand = makeCmd({
       name: "custom",
       summary: "Custom",
-      schema: z.object({ token: z.string().optional() }),
+      inputSchema: z.object({ token: z.string().optional() }),
     });
     const { data, warnings } = validateCLICommandArgs(custom, ["--token", "abc"]);
     expect(data.token).toBe("abc");
@@ -437,16 +500,55 @@ describe("validateCLICommandArgs", () => {
     expect(warnings).toEqual([]);
   });
 
-  test("ignores a non-ZodObject schema and falls back to options", () => {
+  test("normalizes camelCase inputSchema keys for CLI flag matching", () => {
+    const custom: CLICommand = makeCmd({
+      name: "custom",
+      summary: "Custom",
+      inputSchema: z.object({ userDataDir: z.string().optional() }),
+    });
+    const { data, warnings } = validateCLICommandArgs(custom, ["--user-data-dir", "/tmp"]);
+    expect(data["user-data-dir"]).toBe("/tmp");
+    expect(warnings).toEqual([]);
+  });
+
+  test("--no- negation works with normalized noCache-style inputSchema keys", () => {
+    const custom: CLICommand = makeCmd({
+      name: "custom",
+      summary: "Custom",
+      inputSchema: z.object({ noCache: z.boolean().default(true) }),
+    });
+    const { data, warnings } = validateCLICommandArgs(custom, ["--no-cache"]);
+    expect(data["no-cache"]).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
+  test("ignores a non-ZodObject inputSchema and falls back to options", () => {
     const bad: CLICommand = makeCmd({
       name: "bad",
       summary: "Bad",
-      schema: z.string(), // not a ZodObject — must not wipe out option inference
+      inputSchema: z.string(), // not a ZodObject — must not wipe out option inference
       options: [{ flag: "--json", desc: "JSON output" }],
     });
     const { data, warnings } = validateCLICommandArgs(bad, ["--json"]);
     expect(data.json).toBe(true);
     expect(warnings).toEqual([]);
+  });
+
+  test("hidden keyMap fields are excluded from inputSchema validation", () => {
+    const cmd: CLICommand = makeCmd({
+      name: "hidden-test",
+      summary: "Hidden",
+      inputSchema: z.object({
+        visible: z.string().optional(),
+        secret: z.string(),           // required but hidden — must not fail
+      }),
+      keyMap: { secret: { hidden: true } },
+    });
+    const { data, warnings } = validateCLICommandArgs(cmd, ["--visible", "hello"]);
+    expect(data.visible).toBe("hello");
+    expect(warnings).toEqual([]);
+    // "secret" should NOT be in the normalized schema
+    expect(data).not.toHaveProperty("secret");
   });
 });
 

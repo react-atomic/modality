@@ -150,13 +150,16 @@ export function buildCliFromTools(
     const command: CLICommand = {
       name: toKebab(name),
       summary: tool.description ?? "",
+      inputSchema: tool.inputSchema,
       options: toolOptions,
       positionals: cleanPositionals,
       examples: tool.examples,
       usage: tool.usage,
       aliases: tool.aliases,
       positionalKeys: tool.positionalKeys,
-      keyMap: tool.keyMap,
+      // Store the merged keyMap (includes skipFields hidden entries) so
+      // downstream validation can exclude hidden fields from the schema.
+      keyMap: Object.keys(keyMap ?? {}).length > 0 ? keyMap : tool.keyMap,
     } as CLICommand;
     commands.push(command);
 
