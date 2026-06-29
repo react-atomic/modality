@@ -1,11 +1,11 @@
-import { readdirSync, statSync } from "fs";
-import { join, extname } from "path";
+import { readdirSync, statSync, realpathSync } from "fs";
+import { join, extname, sep } from "path";
 
 interface ScanOptions {
   targetFolderName: string; // Name of folder to scan (e.g., 'templates', 'protocols', 'skills')
   fileExtensions?: string[]; // Extensions to include (default: all files)
   fileNameFilter?: (name: string) => boolean; // Optional filter function (default: matches any file)
-  excludePatterns?: string[]; // Patterns to exclude (default: files starting with '_' or '.')
+  excludePatterns?: string[]; // Patterns to exclude (default: entries starting with '.' or '__')
   searchInSubfolders?: boolean; // If true, recursively search subdirectories of target folder for matching files
 }
 
@@ -39,14 +39,40 @@ export function recursiveScanForFiles(
 
   // O(1) lookup instead of O(e) with .some()
   const extensionSet = new Set(fileExtensions);
-  const errors: Record<string, Error>[] = [];
+  const errors: { path: string; error: string }[] = [];
+  // Track resolved real paths already entered to prevent re-scanning
+  // the same directory through different symlink chains
+  const visitedRealDirs = new Set<string>();
+
+  // Real path of the scan root; entries resolving outside it are skipped.
+  let realBase: string;
+  try {
+    realBase = realpathSync(baseDir);
+  } catch {
+    return files; // base directory doesn't exist — nothing to scan
+  }
 
   function scanDirectory(
     dir: string,
     relativePath: string = "",
     isSearchingForTarget: boolean = true
   ): void {
-    const entries = readdirSync(dir);
+    // Resolve real path and skip if already scanned
+    try {
+      const realDir = realpathSync(dir);
+      if (visitedRealDirs.has(realDir)) return;
+      visitedRealDirs.add(realDir);
+    } catch {
+      return; // can't resolve — skip
+    }
+
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch (e) {
+      errors.push({ path: dir, error: (e as Error).message });
+      return;
+    }
     for (const entry of entries) {
       try {
         if (excludePatterns.some((pattern) => entry.startsWith(pattern))) {
@@ -55,6 +81,19 @@ export function recursiveScanForFiles(
 
         const fullPath = join(dir, entry);
         const relPath = relativePath ? `${relativePath}/${entry}` : entry;
+
+        // Skip entries that resolve outside the scan tree (e.g. a symlink to
+        // `../../../src`). realpathSync follows the full symlink chain.
+        let realPath: string;
+        try {
+          realPath = realpathSync(fullPath);
+        } catch {
+          continue; // broken/unreadable symlink or vanished entry — skip
+        }
+        if (realPath !== realBase && !realPath.startsWith(realBase + sep)) {
+          continue; // escapes the scan tree
+        }
+
         const isDirectory = statSync(fullPath, {
           throwIfNoEntry: false,
         })?.isDirectory();
@@ -73,18 +112,18 @@ export function recursiveScanForFiles(
           (!fileExtensions || extensionSet.has(extname(entry))) &&
           fileNameFilter(entry)
         ) {
-          // Collect matching files
           files.push({ filename: relPath, fullPath });
         }
       } catch (e) {
-        errors.push({ dir: e as Error });
+        errors.push({ path: join(dir, entry), error: (e as Error).message });
       }
     }
   }
 
   scanDirectory(baseDir, "", true);
   if (errors.length > 0) {
-    throw new Error(`Error scanning directory: ${JSON.stringify(errors)}`);
+    const detail = errors.map((e) => `  ${e.path}: ${e.error}`).join("\n");
+    throw new Error(`Error scanning directory:\n${detail}`);
   }
   return files.sort((a, b) => a.filename.localeCompare(b.filename));
 }
