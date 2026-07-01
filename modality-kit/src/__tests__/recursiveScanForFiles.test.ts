@@ -104,4 +104,30 @@ describe("recursiveScanForFiles symlink containment", () => {
 
     expect(files).toEqual([]);
   });
+
+  it("excludes out-of-tree symlinks when restrictToBaseDir is true", () => {
+    const files = recursiveScanForFiles(root, {
+      targetFolderName: "templates",
+      fileExtensions: [".md"],
+      searchInSubfolders: true,
+      restrictToBaseDir: true,
+    });
+
+    const filenames = files.map((f) => f.filename);
+    // 'escape' is a symlink to outside/ which lives beside root/, not under it
+    expect(filenames).not.toContain("templates/escape/leak.md");
+    // Legitimate in-tree entries still found
+    expect(filenames).toContain("templates/good.md");
+    expect(filenames).toContain("templates/sub/nested.md");
+  });
+
+  it("returns empty array for a nonexistent base when restrictToBaseDir is true", () => {
+    const files = recursiveScanForFiles(join(workspace, "does-not-exist"), {
+      targetFolderName: "templates",
+      fileExtensions: [".md"],
+      restrictToBaseDir: true,
+    });
+
+    expect(files).toEqual([]);
+  });
 });

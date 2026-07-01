@@ -1,5 +1,5 @@
 import { readdirSync, statSync, realpathSync } from "fs";
-import { join, extname } from "path";
+import { join, extname, sep } from "path";
 
 interface ScanOptions {
   targetFolderName: string; // Name of folder to scan (e.g., 'templates', 'protocols', 'skills')
@@ -7,6 +7,7 @@ interface ScanOptions {
   fileNameFilter?: (name: string) => boolean; // Optional filter function (default: matches any file)
   excludePatterns?: string[]; // Patterns to exclude (default: entries starting with '.' or '__')
   searchInSubfolders?: boolean; // If true, recursively search subdirectories of target folder for matching files
+  restrictToBaseDir?: boolean; // If true, skip entries whose real path resolves outside baseDir, e.g. a symlink to `../../../src` (default: false)
 }
 
 /**
@@ -35,6 +36,7 @@ export function recursiveScanForFiles(
     fileNameFilter = () => true,
     excludePatterns = [".", "__"],
     searchInSubfolders = false,
+    restrictToBaseDir = false,
   } = options;
 
   // O(1) lookup instead of O(e) with .some()
@@ -43,6 +45,17 @@ export function recursiveScanForFiles(
   // Track resolved real paths already entered to prevent re-scanning
   // the same directory through different symlink chains
   const visitedRealDirs = new Set<string>();
+
+  // Real path of the scan root; only needed when restricting to the tree.
+  // Entries resolving outside it are skipped when restrictToBaseDir is enabled.
+  let realBase: string | undefined;
+  if (restrictToBaseDir) {
+    try {
+      realBase = realpathSync(baseDir);
+    } catch {
+      return files; // base directory doesn't exist — nothing to scan
+    }
+  }
 
   function scanDirectory(
     dir: string,
@@ -74,21 +87,38 @@ export function recursiveScanForFiles(
         const fullPath = join(dir, entry);
         const relPath = relativePath ? `${relativePath}/${entry}` : entry;
 
+        // When restricting to baseDir, skip entries whose real path
+        // resolves outside baseDir (e.g. a symlink to `../../../src`).
+        // realpathSync follows the full symlink chain.
+        if (restrictToBaseDir) {
+          let realPath: string;
+          try {
+            realPath = realpathSync(fullPath);
+          } catch {
+            continue; // broken/unreadable symlink or vanished entry — skip
+          }
+          if (realPath !== realBase && !realPath.startsWith(realBase + sep)) {
+            continue; // escapes the scan tree
+          }
+        }
+
         const isDirectory = statSync(fullPath, {
           throwIfNoEntry: false,
         })?.isDirectory();
 
-        if (isSearchingForTarget) {
-          // Phase 1: Looking for target folder
-          if (isDirectory) {
+        if (isDirectory) {
+          // Recurse into directories: target-seeking or subfolder-enabled
+          if (isSearchingForTarget) {
             scanDirectory(fullPath, relPath, entry !== targetFolderName);
-          }
-        } else if (isDirectory) {
-          // Phase 2: Inside target folder, recurse into subfolders if enabled
-          if (searchInSubfolders) {
+          } else if (searchInSubfolders) {
             scanDirectory(fullPath, relPath, false);
           }
-        } else if (
+          continue;
+        }
+
+        // File — collect when inside target folder and filters match
+        if (
+          !isSearchingForTarget &&
           (!fileExtensions || extensionSet.has(extname(entry))) &&
           fileNameFilter(entry)
         ) {
