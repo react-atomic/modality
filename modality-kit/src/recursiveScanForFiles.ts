@@ -42,8 +42,8 @@ export function recursiveScanForFiles(
   // O(1) lookup instead of O(e) with .some()
   const extensionSet = new Set(fileExtensions);
   const errors: { path: string; error: string }[] = [];
-  // Track resolved real paths already entered to prevent re-scanning
-  // the same directory through different symlink chains
+  // Track "${isSearchingForTarget}:<realPath>" of dirs already entered to prevent
+  // re-scanning the same directory through different symlink chains.
   const visitedRealDirs = new Set<string>();
 
   // Real path of the scan root; only needed when restricting to the tree.
@@ -62,11 +62,17 @@ export function recursiveScanForFiles(
     relativePath: string = "",
     isSearchingForTarget: boolean = true
   ): void {
-    // Resolve real path and skip if already scanned
+    // Resolve real path and skip if this dir was already scanned *in the same
+    // role*. The key includes isSearchingForTarget so a directory reached both
+    // while searching for the target folder AND while collecting inside it isn't
+    // dropped — e.g. a `categories/*` tree of symlinks back to the real `skills`
+    // folders would otherwise mark every skill dir visited (searching, no
+    // collection) before `skills/` is reached, yielding an empty result.
     try {
       const realDir = realpathSync(dir);
-      if (visitedRealDirs.has(realDir)) return;
-      visitedRealDirs.add(realDir);
+      const visitedKey = `${isSearchingForTarget}:${realDir}`;
+      if (visitedRealDirs.has(visitedKey)) return;
+      visitedRealDirs.add(visitedKey);
     } catch {
       return; // can't resolve — skip
     }

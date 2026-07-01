@@ -131,3 +131,45 @@ describe("recursiveScanForFiles symlink containment", () => {
     expect(files).toEqual([]);
   });
 });
+
+describe("recursiveScanForFiles sibling-alias dedup (searching vs collect)", () => {
+  // Regression for a silent empty-result bug: a sibling tree that sorts before
+  // the target folder and symlinks *into* the target's children. The scanner
+  // walks the sibling in "searching" mode first (collection off) and, before
+  // this fix, recorded each aliased real dir in the visited set — so the later
+  // "collect" pass over the real target folder skipped every child as
+  // already-visited and returned zero files, with no error thrown.
+  //
+  //   root/aaa-categories/browser -> ../skills/foo   (searching-mode alias)
+  //   root/skills/foo/SKILL.md                        (the real, collectable file)
+  //
+  // 'aaa-categories' is chosen and created first so it is traversed before
+  // 'skills' on both hash-ordered (APFS) and creation-ordered (tmpfs) readdir.
+  let workspace: string;
+  let root: string;
+
+  beforeAll(() => {
+    workspace = mkdtempSync(join(tmpdir(), "scan-sibling-alias-"));
+    root = join(workspace, "root");
+    mkdirSync(join(root, "aaa-categories"), { recursive: true }); // sibling first
+    mkdirSync(join(root, "skills", "foo"), { recursive: true });
+    writeFileSync(join(root, "skills", "foo", "SKILL.md"), "skill");
+    // Symlink from the sibling into a real skill folder — reached while still
+    // searching for the target folder (the entry is named 'browser', not 'skills').
+    symlinkSync(join("..", "skills", "foo"), join(root, "aaa-categories", "browser"));
+  });
+
+  afterAll(() => rmSync(workspace, { recursive: true, force: true }));
+
+  it("still collects a target file aliased from a searching-mode sibling", () => {
+    const files = recursiveScanForFiles(root, {
+      targetFolderName: "skills",
+      fileNameFilter: (name) => name === "SKILL.md",
+      searchInSubfolders: true,
+      fileExtensions: [".md"],
+    });
+
+    const skillFiles = files.filter((f) => f.fullPath.endsWith("SKILL.md"));
+    expect(skillFiles.length).toBe(1); // sibling searching-pass must not deny the collect-pass
+  });
+});
