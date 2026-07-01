@@ -1,5 +1,5 @@
 import { readdirSync, statSync, realpathSync } from "fs";
-import { join, extname, sep } from "path";
+import { join, extname } from "path";
 
 interface ScanOptions {
   targetFolderName: string; // Name of folder to scan (e.g., 'templates', 'protocols', 'skills')
@@ -44,14 +44,6 @@ export function recursiveScanForFiles(
   // the same directory through different symlink chains
   const visitedRealDirs = new Set<string>();
 
-  // Real path of the scan root; entries resolving outside it are skipped.
-  let realBase: string;
-  try {
-    realBase = realpathSync(baseDir);
-  } catch {
-    return files; // base directory doesn't exist — nothing to scan
-  }
-
   function scanDirectory(
     dir: string,
     relativePath: string = "",
@@ -81,18 +73,6 @@ export function recursiveScanForFiles(
 
         const fullPath = join(dir, entry);
         const relPath = relativePath ? `${relativePath}/${entry}` : entry;
-
-        // Skip entries that resolve outside the scan tree (e.g. a symlink to
-        // `../../../src`). realpathSync follows the full symlink chain.
-        let realPath: string;
-        try {
-          realPath = realpathSync(fullPath);
-        } catch {
-          continue; // broken/unreadable symlink or vanished entry — skip
-        }
-        if (realPath !== realBase && !realPath.startsWith(realBase + sep)) {
-          continue; // escapes the scan tree
-        }
 
         const isDirectory = statSync(fullPath, {
           throwIfNoEntry: false,

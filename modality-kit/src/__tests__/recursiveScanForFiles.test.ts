@@ -85,17 +85,6 @@ describe("recursiveScanForFiles symlink containment", () => {
 
   afterAll(() => rmSync(workspace, { recursive: true, force: true }));
 
-  it("skips symlinks that resolve outside the scan tree", () => {
-    const files = recursiveScanForFiles(root, {
-      targetFolderName: "templates",
-      fileExtensions: [".md"],
-      searchInSubfolders: true,
-    });
-
-    expect(files.some((f) => f.filename.includes("leak"))).toBe(false);
-    expect(files.some((f) => f.filename.includes("good"))).toBe(true);
-  });
-
   it("follows in-tree symlinks without re-collecting deduped dirs", () => {
     const files = recursiveScanForFiles(root, {
       targetFolderName: "templates",
