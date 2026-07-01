@@ -5,7 +5,9 @@
  * "Unknown flag --confg. Did you mean --config?" instead of silent failure.
  */
 
+import { z } from "zod";
 import type { CLICommand, Option } from "./types";
+import { schemaToCliOptions } from "./zod-cli";
 
 // ── Levenshtein distance ───────────────────────────────────────────────────
 
@@ -87,7 +89,22 @@ export function knownFlags(
   if (extraFlags) for (const f of extraFlags) flags.add(f);
 
   if (command) {
-    for (const option of command.options ?? []) {
+    // A command's flags may be declared as an explicit `.options` array OR
+    // (for schema-driven commands) derived from its Zod `inputSchema` — the
+    // same way `buildCliFromTools`/help generation derives them. Without the
+    // schema branch, schema-driven commands whose `.options` was never
+    // populated would have all their flags rejected as "unknown".
+    const options = [...(command.options ?? [])];
+    if (command.inputSchema instanceof z.ZodObject) {
+      options.push(
+        ...schemaToCliOptions(
+          command.inputSchema,
+          command.keyMap,
+        ).options,
+      );
+    }
+
+    for (const option of options) {
       const tokens = option.flag.match(/--[\w][\w-]*/g);
       if (tokens) for (const t of tokens) flags.add(t);
       // Also add bare positional flags (e.g. "list", "show <id>")
@@ -123,31 +140,43 @@ export function rejectUnknownFlags(
   const known = knownFlags(command, extraFlags);
   const warnings: string[] = [];
 
+  // Pre-filter long flags once for fuzzy matching
+  const longKnown = known.filter((k) => k.startsWith("--"));
+
   let ended = false;
-  for (const a of args) {
-    if (a === "--") {
+  for (const arg of args) {
+    if (arg === "--") {
       ended = true;
       continue;
     }
     if (ended) continue;
 
-    const isLong = a.startsWith("--");
-    if (!a.startsWith("-")) continue;
-    if (known.includes(a)) continue;
+    if (!arg.startsWith("-")) continue;
 
-    // Single-dash shorthand (e.g. -j for --json)
-    if (!isLong) {
+    // Strip inline value for comparison: --flag=value → --flag
+    const eqIdx = arg.indexOf("=");
+    const flag = eqIdx !== -1 ? arg.slice(0, eqIdx) : arg;
+
+    if (known.includes(flag)) continue;
+
+    // --no-<flag> negation: strip prefix and check base flag exists
+    if (flag.startsWith("--no-") && !known.includes(flag)) {
+      const baseFlag = "--" + flag.slice(5);
+      if (known.includes(baseFlag)) continue;
+    }
+
+    // Short flags (single dash, -- is false) are not supported
+    if (!flag.startsWith("--")) {
       warnings.push(
-        `Unknown flag ${a}. Use --help to see available options (short flags not supported).`,
+        `Unknown flag ${arg}. Use --help to see available options (short flags not supported).`,
       );
       continue;
     }
 
     // Long flag: try fuzzy match
-    const longKnown = known.filter((k) => k.startsWith("--"));
-    const match = fuzzySuggestion(a, longKnown);
+    const match = fuzzySuggestion(flag, longKnown);
     const suffix = match ? `. Did you mean ${match}?` : "";
-    warnings.push(`Unknown flag ${a}${suffix}`);
+    warnings.push(`Unknown flag ${arg}${suffix}`);
   }
 
   return warnings;
