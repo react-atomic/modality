@@ -1,5 +1,5 @@
 {
-  "version": "1.7.1",
+  "version": "1.8.0",
   "name": "modality-mcp-kit",
   "repository": {
     "type": "git",
@@ -22,14 +22,14 @@
   "author": "Hill <hill@kimo.com>",
   "license": "ISC",
   "peerDependencies": {
-    "hono": "^4.12.19"
+    "hono": "^4.12.27"
   },
   "dependencies": {
-    "@valibot/to-json-schema": "^1.7.0",
-    "effect": "^3.21.2",
-    "modality-kit": "^0.17.8",
-    "sury": "^11.0.0-alpha.4",
-    "xsschema": "0.5.0-beta.4",
+    "@valibot/to-json-schema": "^1.7.1",
+    "effect": "^3.21.4",
+    "modality-kit": "^0.17.12",
+    "sury": "^11.0.0-alpha.9",
+    "xsschema": "0.5.0-beta.6",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
@@ -43,6 +43,9 @@
   "types": "./dist/types/index.d.ts",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
+  "bin": {
+    "modality-mcp": "./dist/cli.js"
+  },
   "scripts": {
     "build": "bun tsc -p ./",
     "build:types": "echo 'Starting build validation...' && bun --version && echo 'Running TypeScript type checking...' && bun tsc --noEmit --strict && echo '✅ Build validation successful - no TypeScript errors found' || (echo '❌ Build failed' && exit 1)",
