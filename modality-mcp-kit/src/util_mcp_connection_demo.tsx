@@ -7,6 +7,8 @@
  * Usage: /mcp-demo - returns MCP connection demo documentation and tool showcase
  */
 
+import type { Context } from "hono";
+import type { FC, PropsWithChildren } from "hono/jsx";
 import type { FastMCPCompatible } from "./util_mcp_tools_converter.js";
 
 // ============================================
@@ -18,13 +20,6 @@ interface MCPClientInfo {
   description: string;
   connectionCode: string;
   type: "terminal" | "editor" | "platform";
-}
-
-interface MCPServerToolInfo {
-  name: string;
-  description?: string;
-  inputSchema?: any;
-  annotations?: any;
 }
 
 interface GroupedItem {
@@ -71,6 +66,7 @@ const connectAIShowcase = (
       "type": "http",
       "url": "{serverUrl}${mcpPath}",
       "headers": {},
+      "deferTools": "never",
       "tools": ["*"]
     }
   }
@@ -105,7 +101,7 @@ const connectAIShowcase = (
 // SERVER TOOLS EXTRACTION
 // ============================================
 
-const getServerTools = (middleware?: FastMCPCompatible): MCPServerToolInfo[] => {
+const getServerTools = (middleware?: FastMCPCompatible): GroupedItem[] => {
   if (!middleware || !middleware.getTools) {
     return [];
   }
@@ -113,8 +109,6 @@ const getServerTools = (middleware?: FastMCPCompatible): MCPServerToolInfo[] => 
   return middleware.getTools().map((tool) => ({
     name: tool.name,
     description: tool.description,
-    inputSchema: tool.inputSchema,
-    annotations: tool.annotations,
   }));
 };
 
@@ -123,11 +117,9 @@ const getServerTools = (middleware?: FastMCPCompatible): MCPServerToolInfo[] => 
 // ============================================
 
 const generateDemoDocumentation = (
-  serverName: string,
-  mcpPath: string = "/mcp",
+  mcpClients: Record<string, MCPClientInfo>,
   helloWorld?: string
 ): string => {
-  const mcpClients = connectAIShowcase(serverName, mcpPath);
   return `# MCP Connection Guide
 
 ${helloWorld ? `## Hello Prompt\n\n${helloWorld}\n` : ""}## How to Connect
@@ -156,11 +148,11 @@ ${mcpClient.connectionCode}
 
 /**
  * Create MCP connection demo handler with server configuration
- * @param config - Server name and version for consistency
+ * @param config - Server configuration bound to every request
  * @returns Hono handler function
  */
 export const createMcpConnectionDemoHandler = (config: MCPConnectionConfig) => {
-  return async (c: any) => {
+  return async (c: Context) => {
     return mcpConnectionDemoHandler(c, config);
   };
 };
@@ -173,7 +165,7 @@ export const createMcpConnectionDemoHandler = (config: MCPConnectionConfig) => {
  * @returns Demo page with connection information
  */
 export const mcpConnectionDemoHandler = async (
-  c: any,
+  c: Context,
   config?: MCPConnectionConfig
 ) => {
   const format =
@@ -182,17 +174,15 @@ export const mcpConnectionDemoHandler = async (
   const mcpPath = config?.mcpPath || "/mcp";
 
   // Get server URL: from config only (client-side will detect actual protocol)
-  let serverUrl: string = config?.serverUrl || "";
+  const serverUrl: string = config?.serverUrl || "";
 
   const mcpClients = connectAIShowcase(serverName, mcpPath);
-  const documentation = generateDemoDocumentation(
-    serverName,
-    mcpPath,
-    config?.helloWorld
-  );
 
-  // Handle different format requests
   if (format === "markdown" || format === "md") {
+    const documentation = generateDemoDocumentation(
+      mcpClients,
+      config?.helloWorld
+    );
     return new Response(documentation, {
       status: 200,
       headers: {
@@ -215,18 +205,15 @@ export const mcpConnectionDemoHandler = async (
     });
   }
 
-  // Default: JSON format with complete data
+  // Any other format value falls through to JSON with complete data
   const serverTools = getServerTools(config?.middleware);
   const demoData = {
-    documentation,
+    documentation: generateDemoDocumentation(mcpClients, config?.helloWorld),
     mcpClients: Object.entries(mcpClients).map(([key, mcpClient]) => ({
       id: key,
       ...mcpClient,
     })),
-    serverTools: serverTools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-    })),
+    serverTools,
     server: {
       name: serverName,
       version: config?.serverVersion || "unknown",
@@ -251,7 +238,7 @@ export const mcpConnectionDemoHandler = async (
 };
 
 // ============================================
-// HTML GENERATION
+// MARKDOWN HELPERS
 // ============================================
 
 function escapeHtml(text: string): string {
@@ -289,7 +276,10 @@ function markdownToHtml(markdown: string): string {
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
   // Links: [text](url) → <a href="url">text</a>
-  html = html.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  html = html.replace(
+    /\[([^\]]+)\]\(([^\)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
 
   // Line breaks
   html = html.replace(/\n/g, "<br>");
@@ -297,57 +287,11 @@ function markdownToHtml(markdown: string): string {
   return html;
 }
 
-function generateHtmlPage(
-  serverUrl: string,
-  config?: MCPConnectionConfig,
-  mcpClientsArg?: Record<string, MCPClientInfo>,
-  mcpPath: string = "/mcp"
-): string {
-  const mcpClientsToDisplay =
-    mcpClientsArg || connectAIShowcase(config?.serverName || "mcp-server", mcpPath);
-  const serverTools = getServerTools(config?.middleware);
+// ============================================
+// JSX COMPONENTS
+// ============================================
 
-  const mcpClientsHtml = Object.entries(mcpClientsToDisplay)
-    .map(
-      ([, mcpClient]) => `
-    <div class="mcp-client-card">
-      <h3>${mcpClient.name}</h3>
-      <p class="mcp-client-type">${mcpClient.type}</p>
-      <p class="mcp-client-description">${mcpClient.description}</p>
-      <div class="connection-section">
-        <label>Connection Code</label>
-        <pre class="code-block"><code>${escapeHtml(mcpClient.connectionCode)}</code></pre>
-        <button class="copy-btn" onclick="copyToClipboard(\`${escapeForJs(mcpClient.connectionCode)}\`)">
-          Copy
-        </button>
-      </div>
-    </div>
-  `
-    )
-    .join("\n");
-
-  const serverToolsHtml =
-    serverTools.length > 0
-      ? serverTools
-          .map(
-            (tool) => `
-    <div class="server-tool-card">
-      <h3>${tool.name}</h3>
-      ${tool.description ? `<div class="tool-description">${markdownToHtml(tool.description)}</div>` : ""}
-    </div>
-  `
-          )
-          .join("\n")
-      : "";
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${config?.serverName || "MCP Connection Demo"}</title>
-  <style>
+const pageStyles = `
     * {
       margin: 0;
       padding: 0;
@@ -638,98 +582,15 @@ function generateHtmlPage(
         width: 100%;
       }
     }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>🌐 ${config?.serverName || "MCP Connection Demo"}</h1>
-      <p>Interactive guide for connecting AI tools and development utilities</p>
-      <p style="font-size: 0.95rem; margin-top: 1rem; opacity: 0.9;">Server URL: <strong id="server-url-display" style="color: #ffd700; background: rgba(255, 215, 0, 0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 700;">${serverUrl ? serverUrl + mcpPath : "Detecting..."}</strong></p>
-    </header>
+`;
 
-    <div class="content">
-      ${
-        config?.helloWorld
-          ? `<div class="intro-section">
-        <h2>Hello Prompt</h2>
-        <code>${config.helloWorld}</code>
-      </div>`
-          : `<div class="intro-section">
-        <h2>Welcome to MCP</h2>
-        <p>
-          The Model Context Protocol (MCP) provides a standardized way for AI tools
-          and development utilities to exchange information and capabilities.
-        </p>
-        <p>
-          Below you'll find connection URLs for popular tools. Copy the URL for your
-          tool and add it to your MCP configuration.
-        </p>
-      </div>`
-      }
-
-      <div class="tools-section">
-        <h2>Connect your AI assistant</h2>
-        <div class="tools-grid">
-          ${mcpClientsHtml}
-        </div>
-      </div>
-
-      ${
-        serverToolsHtml
-          ? `<div class="tools-section">
-        <h2>Server Tools</h2>
-        <div class="tools-grid">
-          ${serverToolsHtml}
-        </div>
-      </div>`
-          : ""
-      }
-
-      ${
-        config?.customGroups && config.customGroups.length > 0
-          ? config.customGroups
-              .map(
-                (group) => `
-      <div class="tools-section">
-        <h2>${group.groupName}</h2>
-        <div class="tools-grid">
-          ${group.groupItems
-            .map(
-              (item) => `
-          <div class="server-tool-card">
-            <h3>${item.name}</h3>
-            ${item.description ? `<div class="tool-description">${markdownToHtml(item.description)}</div>` : ""}
-          </div>
-        `
-            )
-            .join("\n")}
-        </div>
-      </div>
-    `
-              )
-              .join("\n")
-          : ""
-      }
-    </div>
-
-    <footer>
-      <p>${config?.serverName || "MCP Connection Demo"} &copy; 2026 | Last updated: ${new Date().toLocaleDateString()}</p>
-      ${
-        config
-          ? `<p>Server: <strong>${config.serverName} ${config.serverVersion ? `v${config.serverVersion}` : ""}</strong></p>`
-          : ""
-      }
-    </footer>
-  </div>
-
-  <script>
+const pageScript = (mcpPath: string) => `
     // Detect client-side protocol and replace placeholders
     function initializeServerUrl() {
       const protocol = window.location.protocol.replace(':', '');
       const host = window.location.host;
       const serverUrl = protocol + '://' + host;
-      const mcpPath = '${mcpPath}';
+      const mcpPath = ${JSON.stringify(mcpPath)};
 
       // Update server URL display
       const displayElement = document.getElementById('server-url-display');
@@ -773,8 +634,170 @@ function generateHtmlPage(
         console.log('Page Load Time:', perfData.loadEventEnd - perfData.fetchStart, 'ms');
       }
     });
-  </script>
-</body>
-</html>
-  `.trim();
+`;
+
+const McpClientCard: FC<{ client: MCPClientInfo }> = ({ client }) => (
+  <div class="mcp-client-card">
+    <h3>{client.name}</h3>
+    <p class="mcp-client-type">{client.type}</p>
+    <p class="mcp-client-description">{client.description}</p>
+    <div class="connection-section">
+      <label>Connection Code</label>
+      <pre class="code-block">
+        <code>{client.connectionCode}</code>
+      </pre>
+      <button
+        class="copy-btn"
+        onclick={`copyToClipboard(\`${escapeForJs(client.connectionCode)}\`)`}
+      >
+        Copy
+      </button>
+    </div>
+  </div>
+);
+
+const ToolCard: FC<{ item: GroupedItem }> = ({ item }) => (
+  <div class="server-tool-card">
+    <h3>{item.name}</h3>
+    {item.description ? (
+      <div
+        class="tool-description"
+        dangerouslySetInnerHTML={{ __html: markdownToHtml(item.description) }}
+      />
+    ) : null}
+  </div>
+);
+
+const ToolsSection: FC<PropsWithChildren<{ title: string }>> = ({
+  title,
+  children,
+}) => (
+  <div class="tools-section">
+    <h2>{title}</h2>
+    <div class="tools-grid">{children}</div>
+  </div>
+);
+
+const IntroSection: FC<{ helloWorld?: string }> = ({ helloWorld }) =>
+  helloWorld ? (
+    <div class="intro-section">
+      <h2>Hello Prompt</h2>
+      <code>{helloWorld}</code>
+    </div>
+  ) : (
+    <div class="intro-section">
+      <h2>Welcome to MCP</h2>
+      <p>
+        The Model Context Protocol (MCP) provides a standardized way for AI tools
+        and development utilities to exchange information and capabilities.
+      </p>
+      <p>
+        Below you'll find connection URLs for popular tools. Copy the URL for your
+        tool and add it to your MCP configuration.
+      </p>
+    </div>
+  );
+
+const DemoPage: FC<{
+  serverUrl: string;
+  config?: MCPConnectionConfig;
+  mcpClients: Record<string, MCPClientInfo>;
+  serverTools: GroupedItem[];
+  mcpPath: string;
+}> = ({ serverUrl, config, mcpClients, serverTools, mcpPath }) => {
+  const title = config?.serverName || "MCP Connection Demo";
+
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{title}</title>
+        <style dangerouslySetInnerHTML={{ __html: pageStyles }} />
+      </head>
+      <body>
+        <div class="container">
+          <header>
+            <h1>🌐 {title}</h1>
+            <p>Interactive guide for connecting AI tools and development utilities</p>
+            <p style="font-size: 0.95rem; margin-top: 1rem; opacity: 0.9;">
+              Server URL:{" "}
+              <strong
+                id="server-url-display"
+                style="color: #ffd700; background: rgba(255, 215, 0, 0.2); padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 700;"
+              >
+                {serverUrl ? serverUrl + mcpPath : "Detecting..."}
+              </strong>
+            </p>
+          </header>
+
+          <div class="content">
+            <IntroSection helloWorld={config?.helloWorld} />
+
+            <ToolsSection title="Connect your AI assistant">
+              {Object.entries(mcpClients).map(([key, client]) => (
+                <McpClientCard key={key} client={client} />
+              ))}
+            </ToolsSection>
+
+            {serverTools.length > 0 ? (
+              <ToolsSection title="Server Tools">
+                {serverTools.map((tool) => (
+                  <ToolCard key={tool.name} item={tool} />
+                ))}
+              </ToolsSection>
+            ) : null}
+
+            {(config?.customGroups || []).map((group) => (
+              <ToolsSection key={group.groupName} title={group.groupName}>
+                {group.groupItems.map((item) => (
+                  <ToolCard key={item.name} item={item} />
+                ))}
+              </ToolsSection>
+            ))}
+          </div>
+
+          <footer>
+            <p>
+              {title} &copy; 2026 | Last updated: {new Date().toLocaleDateString()}
+            </p>
+            {config ? (
+              <p>
+                Server:{" "}
+                <strong>
+                  {config.serverName}{" "}
+                  {config.serverVersion ? `v${config.serverVersion}` : ""}
+                </strong>
+              </p>
+            ) : null}
+          </footer>
+        </div>
+
+        <script dangerouslySetInnerHTML={{ __html: pageScript(mcpPath) }} />
+      </body>
+    </html>
+  );
+};
+
+// ============================================
+// HTML GENERATION
+// ============================================
+
+function generateHtmlPage(
+  serverUrl: string,
+  config: MCPConnectionConfig | undefined,
+  mcpClients: Record<string, MCPClientInfo>,
+  mcpPath: string
+): string {
+  const page = (
+    <DemoPage
+      serverUrl={serverUrl}
+      config={config}
+      mcpClients={mcpClients}
+      serverTools={getServerTools(config?.middleware)}
+      mcpPath={mcpPath}
+    />
+  );
+
+  return `<!DOCTYPE html>\n${page.toString()}`;
 }
