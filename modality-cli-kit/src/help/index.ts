@@ -4,11 +4,16 @@
  * ## Quick start
  *
  * ```ts
+ * import { z } from "zod";
  * import { generateHelp, generateCommandHelp } from "modality-cli-kit/help";
  *
  * const commands = [
  *   { name: "open",  summary: "Navigate to a URL" },
- *   { name: "click", summary: "Click an element", options: [{ flag: "--selector", arg: "<sel>", desc: "CSS selector" }] },
+ *   {
+ *     name: "click",
+ *     summary: "Click an element",
+ *     inputSchema: z.object({ selector: z.string().optional().describe("CSS selector") }),
+ *   },
  * ];
  *
  * console.log(generateHelp({ cliName: "my-cli", tagline: "My tool", commands }));
@@ -68,7 +73,6 @@ export {
 // Zod CLI
 export {
   inferOptionType,
-  optionsToSchema,
   schemaToCliOptions,
   toKebab,
   parseCliArgs,

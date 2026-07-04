@@ -6,9 +6,37 @@
  *   2. **Per-command help** (`generateCommandHelp`) — detailed flags, usage, examples
  */
 
+import { z } from "zod";
 import * as c from "./colors";
 import { padName, padVisible, flagPad, visibleWidth, Lines } from "./formatter";
+import { schemaToCliOptions, buildKeyMap } from "./zod-cli";
 import type { CLICommand, HelpConfig, Option } from "./types";
+
+/**
+ * Resolve a command's options + positionals for display.
+ *
+ * Options are always derived from the command's Zod `inputSchema`
+ * (+ `positionalKeys`/`keyMap`) — a command without a schema has no flags of
+ * its own. Explicit `positionals` win over schema-derived ones (used for
+ * sub-command style entries that a Zod object can't express).
+ */
+function cliSurface(cmd: CLICommand): { options: Option[]; positionals: Option[] } {
+  const explicitPositionals = cmd.positionals ?? [];
+  if (!(cmd.inputSchema instanceof z.ZodObject)) {
+    return { options: [], positionals: explicitPositionals };
+  }
+
+  const derived = schemaToCliOptions(
+    cmd.inputSchema as z.ZodObject<Record<string, z.ZodTypeAny>>,
+    buildKeyMap(cmd.positionalKeys, cmd.keyMap),
+  );
+  return {
+    options: derived.options,
+    positionals: explicitPositionals.length > 0
+      ? explicitPositionals
+      : derived.positionals,
+  };
+}
 
 /**
  * Render one positional-argument line: `<name>   description`.
@@ -61,12 +89,13 @@ export function renderCLICommand(
   }
 
   // Non-compact: name + summary + positionals + options below
+  const { options, positionals } = cliSurface(cmd);
   const lines = new Lines();
   lines.push(`  ${nameCol}${c.dim(cmd.summary ?? "")}`);
-  for (const pos of cmd.positionals ?? []) {
+  for (const pos of positionals) {
     lines.push(renderPositional(pos, "    "));
   }
-  for (const opt of cmd.options ?? []) {
+  for (const opt of options) {
     lines.push(renderOption(opt, false));
   }
   return lines.flush();
@@ -189,6 +218,7 @@ export function generateCommandHelp(
   command: CLICommand,
   globalOptions?: Option[],
 ): string {
+  const { options, positionals } = cliSurface(command);
   const out = new Lines();
   out.push("");
   out.push(`${c.bold(`${cliName} ${command.name}`)} ${c.dim(`— ${command.summary ?? ""}`)}`);
@@ -200,7 +230,7 @@ export function generateCommandHelp(
     out.push(`${c.header("Usage:")}  ${c.cmd(first!)}`);
     for (const line of rest) out.push(`        ${c.cmd(line)}`);
   } else {
-    const posSlots = (command.positionals ?? [])
+    const posSlots = positionals
       .map((pos) => c.arg(`<${pos.flag}>`))
       .join(" ");
     const usageParts = [c.cmd(cliName), c.cmd(command.name ?? ""), posSlots, c.dim("[options]")];
@@ -209,21 +239,21 @@ export function generateCommandHelp(
   out.push("");
 
   // Positional Arguments
-  if (command.positionals && command.positionals.length > 0) {
+  if (positionals.length > 0) {
     out.push(`${c.header("Arguments:")}`);
-    for (const pos of command.positionals) {
+    for (const pos of positionals) {
       out.push(renderPositional(pos, "  "));
     }
     out.push("");
   }
 
   // Options
-  const hasOwnOptions = command.options && command.options.length > 0;
+  const hasOwnOptions = options.length > 0;
   const hasGlobalOptions = globalOptions && globalOptions.length > 0;
 
   if (hasOwnOptions || hasGlobalOptions) {
     out.push(`${c.header("Options:")}`);
-    for (const opt of command.options ?? []) {
+    for (const opt of options) {
       out.push(renderOption(opt, false));
     }
     if (hasGlobalOptions) {

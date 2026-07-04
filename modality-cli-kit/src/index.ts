@@ -39,7 +39,6 @@ export {
   DEFAULT_GLOBAL_FLAGS,
   // Zod CLI
   inferOptionType,
-  optionsToSchema,
   schemaToCliOptions,
   toKebab,
   parseCliArgs,

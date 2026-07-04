@@ -88,24 +88,6 @@ export function inferOptionType(option: Option): z.ZodTypeAny {
   return option.required ? base : base.optional();
 }
 
-/**
- * Convert an array of Option definitions into a Zod object schema.
- *
- * Keys are derived from the long flag name (e.g., `"--timeframe"` → `"timeframe"`).
- * Short flags (`-h`) are skipped since they're typically aliases handled elsewhere.
- */
-export function optionsToSchema(
-  options: Option[],
-): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const shape: Record<string, z.ZodTypeAny> = {};
-  for (const opt of options) {
-    const match = opt.flag.match(/^--([\w-]+)/);
-    if (!match) continue;
-    shape[match[1]!] = inferOptionType(opt);
-  }
-  return z.object(shape);
-}
-
 // ── CLI arg parsing ──────────────────────────────────────────────────
 
 /**
@@ -281,7 +263,6 @@ function analyzeZodField(field: z.ZodTypeAny): FieldAnalysis {
   // Capture description from the outer field (Zod 4 puts it on the wrapper)
   const description = (field as { description?: string }).description;
 
-  // Peel wrappers
   while (true) {
     if (current instanceof z.ZodOptional) {
       isOptional = true;
@@ -381,6 +362,8 @@ export function schemaToCliOptions(
     }
 
     if (override?.position !== undefined) {
+      // Positional entries use bare names (no -- prefix)
+      if (opt.flag.startsWith("--")) opt.flag = opt.flag.slice(2);
       positionals.push({ opt, key, index: override.position });
     } else {
       options.push(opt);
@@ -395,11 +378,55 @@ export function schemaToCliOptions(
   };
 }
 
+/**
+ * Merge positional keys, per-field keyMap, and skipped fields into a single
+ * keyMap suitable for `schemaToCliOptions()`.
+ *
+ * @param positionalKeys  Schema keys that map to positional args (in order).
+ * @param keyMap          Explicit per-field overrides.
+ * @param skipFields      Schema keys to hide from CLI generation entirely.
+ */
+export function buildKeyMap(
+  positionalKeys: string[] | undefined,
+  keyMap: Record<string, KeyOverride> | undefined,
+  skipFields?: string[],
+): Record<string, KeyOverride> | undefined {
+  const km: Record<string, KeyOverride> = {};
+
+  // Mark globally skipped fields as hidden
+  if (skipFields) {
+    for (const key of skipFields) {
+      km[key] = { ...km[key], hidden: true };
+    }
+  }
+
+  // Copy explicit keyMap entries
+  if (keyMap) {
+    for (const [k, v] of Object.entries(keyMap)) {
+      km[k] = { ...km[k], ...v };
+    }
+  }
+
+  // Annotate positional keys with their index
+  if (positionalKeys) {
+    for (let i = 0; i < positionalKeys.length; i++) {
+      const key = positionalKeys[i]!;
+      km[key] = { ...km[key], position: i };
+    }
+  }
+
+  return Object.keys(km).length > 0 ? km : undefined;
+}
+
 // ── Schema helpers ──────────────────────────────────────────────────
 
 /**
  * Merge global default flags (--help, --json, --no-cache) into a Zod schema
  * so they are recognized as valid flags instead of flagged as unknown.
+ *
+ * Uses `.safeExtend()` so object-level refinements (e.g. "--stop and --target
+ * must be provided together") survive the merge — rebuilding via `z.object()`
+ * would silently drop them.
  *
  * Short flags (-h) are skipped since they're aliases handled elsewhere.
  */
@@ -407,18 +434,19 @@ function mergeDefaultFlags(
   schema: z.ZodObject<Record<string, z.ZodTypeAny>>,
   extraFlags?: string[],
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
-  const merged = { ...schema.shape };
+  const extra: Record<string, z.ZodTypeAny> = {};
   const flags = extraFlags ?? [...DEFAULT_GLOBAL_FLAGS];
 
   for (const flag of flags) {
     if (!flag.startsWith("--")) continue; // skip short flags like -h
     const key = flag.slice(2);
-    if (!(key in merged)) {
-      merged[key] = z.boolean().optional();
+    if (!(key in schema.shape)) {
+      extra[key] = z.boolean().optional();
     }
   }
 
-  return z.object(merged);
+  if (Object.keys(extra).length === 0) return schema;
+  return schema.safeExtend(extra);
 }
 
 // ── CLICommand-level validation ─────────────────────────────────────
@@ -431,6 +459,12 @@ function mergeDefaultFlags(
  * Fields marked as `hidden` in `keyMap` are excluded from the returned schema
  * so that hidden/skipped fields don't trigger validation failures for inputs
  * that the user cannot supply via the CLI.
+ *
+ * Caveat: when keys are renamed or removed, the object must be rebuilt and
+ * object-level refinements are lost (their callbacks reference the original
+ * key names, so they cannot be carried over safely). Schemas whose keys are
+ * already kebab-case and have no hidden fields pass through untouched,
+ * refinements included.
  */
 export function normalizeSchemaKeys(
   schema: z.ZodObject<Record<string, z.ZodTypeAny>>,
@@ -452,13 +486,12 @@ export function normalizeSchemaKeys(
 }
 
 /**
- * Convert a CLICommand definition's options into a Zod schema and validate CLI args.
+ * Validate CLI args against a CLICommand's Zod `inputSchema`.
  *
  * When `command.inputSchema` is set on a ZodObject, it is used directly for
- * validation (with keys normalized from camelCase to kebab-case).  Otherwise
- * the schema is inferred from the command's `options` / `positionals` arrays
- * via `optionsToSchema`.  Global default flags (--help, --json, --no-cache)
- * are automatically included.
+ * validation (with keys normalized from camelCase to kebab-case).  Commands
+ * without a schema only accept their `positionals` plus the global default
+ * flags (--help, --json, --no-cache), which are automatically included.
  * Returns both the typed parsed data and any validation warnings.
  *
  * @example
@@ -476,11 +509,16 @@ export function validateCLICommandArgs(
   warnings: string[];
 } {
   const positionals = command?.positionals ?? [];
-  const positionalKeys = positionals.map((pos) => pos.flag);
+  // Positional keys come from materialized `positionals` entries when present,
+  // else from `positionalKeys` (kebab-ized to match the normalized schema) so
+  // schema-only commands don't need pre-materialized positional Options.
+  const positionalKeys = positionals.length > 0
+    ? positionals.map((pos) => pos.flag)
+    : (command?.positionalKeys ?? []).map(toKebab);
   let schema: z.ZodObject<Record<string, z.ZodTypeAny>>;
 
-  // Use inputSchema directly for validation when available (bypasses the
-  // lossy optionsToSchema reconstruction, preserving refinements and
+  // Use inputSchema directly for validation when available (bypasses a lossy
+  // Option[]→schema reconstruction, preserving refinements and
   // transforms). Keys are normalized to kebab-case so CLI flag tokens like
   // "--user-data-dir" map to the correct shape key.  Hidden fields (from
   // keyMap) are excluded so they don't cause false validation failures.
@@ -490,20 +528,17 @@ export function validateCLICommandArgs(
       command.keyMap,
     );
   } else {
-    const optsSchema = optionsToSchema(command?.options ?? []);
-    // Merge positional fields into the options schema (skip name collisions).
-    // Positionals always carry a value, so default to a string when no explicit
-    // `type` is given (the boolean-flag default only makes sense for options).
+    // No schema → only positionals are recognized. Positionals always carry a
+    // value, so default to a string when no explicit `type` is given (the
+    // boolean-flag default only makes sense for options).
     const posShape: Record<string, z.ZodTypeAny> = {};
     for (const pos of positionals) {
-      if (!(pos.flag in optsSchema.shape)) {
-        posShape[pos.flag] = inferOptionType({
-          ...pos,
-          arg: pos.arg ?? `<${pos.flag}>`,
-        });
-      }
+      posShape[pos.flag] = inferOptionType({
+        ...pos,
+        arg: pos.arg ?? `<${pos.flag}>`,
+      });
     }
-    schema = z.object({ ...optsSchema.shape, ...posShape });
+    schema = z.object(posShape);
   }
 
   return parseCliArgs(

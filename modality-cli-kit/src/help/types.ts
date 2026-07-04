@@ -48,22 +48,22 @@ export interface KeyOverride {
 }
 
 /**
- * CLI command definition — the single canonical type for both schema-driven
- * and manual commands.
+ * CLI command definition — schema-driven.
  *
- * **Schema-driven usage** (has `inputSchema`):
- * - `positionalKeys` and `keyMap` declare how schema fields map to the CLI
- * - `buildCliFromTools` enriches `options`/`positionals` from `inputSchema`
+ * The Zod `inputSchema` is the single source of truth for a command's flags:
+ * - Help options are derived from it automatically by the help generator —
+ *   there is no manual `Option[]` flag declaration.
+ * - `positionalKeys` and `keyMap` declare how schema fields map to the CLI.
+ * - `validateCLICommandArgs` parses/validates argv against the schema,
+ *   preserving coercions and object-level refinements.
  *
- * **Manual usage** (no `inputSchema`):
- * - Set `options` and `positionals` as `Option[]` directly
- * - Used for ad-hoc commands like `verify`, `e2e` that aren't in the tool registry
+ * Commands without an `inputSchema` expose no flags of their own (global
+ * flags still apply); sub-command style entries can be listed via
+ * `positionals` or custom `usage` lines.
  */
 export interface CLICommand extends AITool<any, z.ZodTypeAny> {
   /** One-line summary shown in the command index (falls back to `description`). */
   summary?: string;
-  /** Command-specific options (excludes global options). */
-  options?: Option[];
   /** Ordered positional arguments (displayed in help, validated in args). */
   positionals?: Option[];
   /** Custom usage lines (optional). If omitted, generates `cliName command [options]`. */

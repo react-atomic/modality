@@ -1,9 +1,13 @@
 /**
  * Demo: using the help kit to recreate co-chrome & use-stock style help.
  *
+ * Commands are schema-driven: flags live in each command's Zod `inputSchema`
+ * and help options are derived from it automatically.
+ *
  * Run: bun run src/help/demo.ts
  */
 
+import { z } from "zod";
 import { generateHelp, generateCommandHelp, renderSection } from "./generator";
 import type { CLICommand, HelpConfig } from "./types";
 
@@ -13,27 +17,28 @@ const chromeCLICommands = [
   {
     name: "open",
     summary: "Navigate to a URL (aliases: goto, navigate)",
-    options: [
-      { flag: "--wait-until", arg: "<condition>", desc: "Wait: load, domcontentloaded, networkidle" },
-    ],
+    inputSchema: z.object({
+      waitUntil: z.string().optional().describe("Wait: load, domcontentloaded, networkidle"),
+    }),
+    keyMap: { waitUntil: { arg: "<condition>" } },
     examples: ["co-chrome open https://example.com"],
   },
   {
     name: "click",
     summary: "Click on an element",
-    options: [
-      { flag: "--selector", arg: "<selector>", desc: "CSS selector or ref (@e1)" },
-      { flag: "--force", desc: "Force click via JavaScript" },
-    ],
+    inputSchema: z.object({
+      selector: z.string().optional().describe("CSS selector or ref (@e1)"),
+      force: z.boolean().optional().describe("Force click via JavaScript"),
+    }),
     examples: ["co-chrome click --selector @e1"],
   },
   {
     name: "fill",
     summary: "Fill an input field",
-    options: [
-      { flag: "--selector", arg: "<selector>", desc: "CSS selector" },
-      { flag: "--text", arg: "<text>", desc: "Text to fill" },
-    ],
+    inputSchema: z.object({
+      selector: z.string().optional().describe("CSS selector"),
+      text: z.string().optional().describe("Text to fill"),
+    }),
     examples: ["co-chrome fill --selector @e5 --text 'hello'"],
   },
   {
@@ -59,19 +64,21 @@ const chromeCLICommands = [
   {
     name: "verify",
     summary: "Validate a YAML operator config file",
-    options: [
-      { flag: "--config", arg: "<file>", desc: "Path to YAML config" },
-    ],
+    inputSchema: z.object({
+      config: z.string().optional().describe("Path to YAML config"),
+    }),
+    keyMap: { config: { arg: "<file>" } },
     examples: ["co-chrome verify --config login.yaml"],
   },
   {
     name: "e2e",
     summary: "Run E2E operator test via CDP",
-    options: [
-      { flag: "--config", arg: "<file>", desc: "Path to YAML config" },
-      { flag: "--headed", desc: "Launch browser in headed mode" },
-      { flag: "--verbose", desc: "Show detailed step-by-step results" },
-    ],
+    inputSchema: z.object({
+      config: z.string().optional().describe("Path to YAML config"),
+      headed: z.boolean().optional().describe("Launch browser in headed mode"),
+      verbose: z.boolean().optional().describe("Show detailed step-by-step results"),
+    }),
+    keyMap: { config: { arg: "<file>" } },
     examples: ["co-chrome e2e --config login.yaml --verbose"],
   },
 ] as CLICommand[];
@@ -102,12 +109,13 @@ const stockCLICommands = [
   {
     name: "price",
     summary: "K 線進場價建議",
-    options: [
-      { flag: "--timeframe", arg: "<TF>", desc: "K 線週期 (default: 1m)" },
-      { flag: "--lookback", arg: "<N>", desc: "K 線觀察視窗 (default: 60)" },
-      { flag: "--human", desc: "也印一段中文摘要到 stderr" },
-      { flag: "--watch", desc: "即時自動更新模式" },
-    ],
+    inputSchema: z.object({
+      timeframe: z.string().optional().describe("K 線週期 (default: 1m)"),
+      lookback: z.coerce.number().optional().describe("K 線觀察視窗 (default: 60)"),
+      human: z.boolean().optional().describe("也印一段中文摘要到 stderr"),
+      watch: z.boolean().optional().describe("即時自動更新模式"),
+    }),
+    keyMap: { timeframe: { arg: "<TF>" }, lookback: { arg: "<N>" } },
     examples: ["use-stock price 2330", "use-stock price TXF-S --watch --interval 5"],
   },
   { name: "direction", summary: "盤勢方向判定 — 波動走多少、還剩多少空間" },

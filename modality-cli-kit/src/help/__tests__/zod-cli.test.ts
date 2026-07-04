@@ -2,7 +2,6 @@ import { describe, test, expect } from "bun:test";
 import { z } from "zod";
 import {
   inferOptionType,
-  optionsToSchema,
   parseCliArgs,
   validateCLICommandArgs,
   buildCLICommandValidator,
@@ -78,43 +77,6 @@ describe("inferOptionType", () => {
     const type = inferOptionType(opt) as z.ZodOptional<z.ZodTypeAny>;
     expect(type.unwrap() instanceof z.ZodString).toBe(true);
     expect(type.unwrap().safeParse("anything").success).toBe(true);
-  });
-});
-
-// ── optionsToSchema ──────────────────────────────────────────────────
-
-describe("optionsToSchema", () => {
-  test("creates schema from options array", () => {
-    const options: Option[] = [
-      { flag: "--timeframe", arg: "<TF>", desc: "Timeframe" },
-      { flag: "--json", desc: "JSON output" },
-    ];
-    const schema = optionsToSchema(options);
-    expect(schema.shape).toHaveProperty("timeframe");
-    expect(schema.shape).toHaveProperty("json");
-    const tfSchema = schema.shape["timeframe"]! as z.ZodTypeAny;
-    const jsonSchema = schema.shape["json"]! as z.ZodTypeAny;
-    expect(tfSchema instanceof z.ZodOptional).toBe(true);
-    expect(jsonSchema instanceof z.ZodOptional).toBe(true);
-    const tfDef = tfSchema._def as { innerType?: z.ZodTypeAny };
-    const jsonDef = jsonSchema._def as { innerType?: z.ZodTypeAny };
-    expect(tfDef.innerType instanceof z.ZodString).toBe(true);
-    expect(jsonDef.innerType instanceof z.ZodBoolean).toBe(true);
-  });
-
-  test("skips short flags", () => {
-    const options: Option[] = [
-      { flag: "-v", desc: "Verbose" },
-      { flag: "--verbose", desc: "Verbose" },
-    ];
-    const schema = optionsToSchema(options);
-    expect(schema.shape).not.toHaveProperty("v");
-    expect(schema.shape).toHaveProperty("verbose");
-  });
-
-  test("handles empty options", () => {
-    const schema = optionsToSchema([]);
-    expect(Object.keys(schema.shape)).toHaveLength(0);
   });
 });
 
@@ -199,7 +161,7 @@ describe("schemaToCliOptions", () => {
       amount: { position: 1 },
     });
     expect(options).toHaveLength(0);
-    expect(positionals.map((p) => p.flag)).toEqual(["--symbol", "--amount"]);
+    expect(positionals.map((p) => p.flag)).toEqual(["symbol", "amount"]);
   });
 
   test("keyMap hidden excludes a field from options", () => {
@@ -223,7 +185,7 @@ describe("schemaToCliOptions", () => {
       secret: { position: 1, hidden: true },
     });
     expect(options).toHaveLength(0);
-    expect(positionals.map((p) => p.flag)).toEqual(["--id"]);
+    expect(positionals.map((p) => p.flag)).toEqual(["id"]);
   });
 });
 
@@ -405,14 +367,14 @@ describe("validateCLICommandArgs", () => {
   const sample: CLICommand = makeCmd({
     name: "price",
     summary: "Price analysis",
-    options: [
-      { flag: "--timeframe", arg: "<TF>", desc: "Candle timeframe" },
-      { flag: "--lookback", arg: "<N>", desc: "Lookback window" },
-      { flag: "--json", desc: "JSON output" },
-    ],
+    inputSchema: z.object({
+      timeframe: z.string().optional().describe("Candle timeframe"),
+      lookback: z.coerce.number().optional().describe("Lookback window"),
+      json: z.boolean().optional().describe("JSON output"),
+    }),
   });
 
-  test("validates command args against its options", () => {
+  test("validates command args against its inputSchema", () => {
     const { data, warnings } = validateCLICommandArgs(sample, [
       "--timeframe", "5m",
       "--json",
@@ -433,7 +395,7 @@ describe("validateCLICommandArgs", () => {
     expect(warnings[0]).toContain("Did you mean");
   });
 
-  test("handles command with no options — global flags pass through", () => {
+  test("handles command with no schema — global flags pass through", () => {
     const noOpts: CLICommand = makeCmd({ name: "open", summary: "Open URL" });
     const result = validateCLICommandArgs(noOpts, ["--help", "--json"]);
     expect(result.warnings).toEqual([]);
@@ -443,11 +405,15 @@ describe("validateCLICommandArgs", () => {
   const withPositionals: CLICommand = makeCmd({
     name: "convert",
     summary: "Convert a value",
+    inputSchema: z.object({
+      symbol: z.string().describe("Asset symbol"),
+      amount: z.coerce.number().optional().describe("Amount"),
+      json: z.boolean().optional().describe("JSON output"),
+    }),
     positionals: [
       { flag: "symbol", desc: "Asset symbol", required: true },
       { flag: "amount", arg: "<N>", desc: "Amount", type: "number" },
     ],
-    options: [{ flag: "--json", desc: "JSON output" }],
   });
 
   test("maps positionals onto their keys (success path)", () => {
@@ -488,11 +454,11 @@ describe("validateCLICommandArgs", () => {
     expect(warnings).toEqual([]);
   });
 
-  test("a positional sharing an option's name does not clobber the option", () => {
+  test("a positional sharing a flag's name does not clobber the flag value", () => {
     const collide: CLICommand = makeCmd({
       name: "collide",
       summary: "Collide",
-      options: [{ flag: "--symbol", arg: "<S>", desc: "Symbol" }],
+      inputSchema: z.object({ symbol: z.string().optional().describe("Symbol") }),
       positionals: [{ flag: "symbol", desc: "Symbol" }],
     });
     const { data, warnings } = validateCLICommandArgs(collide, ["--symbol", "BTC"]);
@@ -522,16 +488,71 @@ describe("validateCLICommandArgs", () => {
     expect(warnings).toEqual([]);
   });
 
-  test("ignores a non-ZodObject inputSchema and falls back to options", () => {
+  test("schema-only command: positionalKeys (no explicit positionals) maps args to kebab-ized keys", () => {
+    const cmd: CLICommand = makeCmd({
+      name: "validate",
+      summary: "Validate",
+      inputSchema: z.object({
+        assetSymbol: z.string().describe("Asset symbol"),
+        lookbackDays: z.coerce.number().optional().describe("Lookback days"),
+      }),
+      // No explicit `positionals[]` — must use toKebab() path for keys
+      positionalKeys: ["assetSymbol", "lookbackDays"],
+    });
+    const { data, warnings } = validateCLICommandArgs(cmd, ["BTC", "5"]);
+    expect(data["asset-symbol"]).toBe("BTC");
+    expect(data["lookback-days"]).toBe(5);
+    expect(warnings).toEqual([]);
+  });
+
+  test("schema-only command: positionalKeys with bare lower-case keys also maps correctly", () => {
+    const cmd: CLICommand = makeCmd({
+      name: "bare-pos",
+      summary: "Bare positionals",
+      inputSchema: z.object({
+        symbol: z.string().describe("Symbol"),
+        amount: z.coerce.number().optional().describe("Amount"),
+      }),
+      positionalKeys: ["symbol", "amount"],
+    });
+    const { data, warnings } = validateCLICommandArgs(cmd, ["BTC", "5"]);
+    expect(data.symbol).toBe("BTC");
+    expect(data.amount).toBe(5);
+    expect(warnings).toEqual([]);
+  });
+
+  test("ignores a non-ZodObject inputSchema and falls back to global flags", () => {
     const bad: CLICommand = makeCmd({
       name: "bad",
       summary: "Bad",
-      inputSchema: z.string(), // not a ZodObject — must not wipe out option inference
-      options: [{ flag: "--json", desc: "JSON output" }],
+      inputSchema: z.string(), // not a ZodObject — must not crash validation
     });
     const { data, warnings } = validateCLICommandArgs(bad, ["--json"]);
     expect(data.json).toBe(true);
     expect(warnings).toEqual([]);
+  });
+
+  test("preserves object-level refinements on inputSchema (paired flags)", () => {
+    const paired: CLICommand = makeCmd({
+      name: "paired",
+      summary: "Paired flags",
+      inputSchema: z
+        .object({
+          stop: z.coerce.number().positive().optional(),
+          target: z.coerce.number().positive().optional(),
+        })
+        .refine((v) => (v.stop === undefined) === (v.target === undefined), {
+          message: "--stop and --target must be provided together",
+        }),
+    });
+
+    const bad = validateCLICommandArgs(paired, ["--stop", "150"]);
+    expect(bad.warnings.some((w) => w.includes("provided together"))).toBe(true);
+
+    const good = validateCLICommandArgs(paired, ["--stop", "150", "--target", "250"]);
+    expect(good.warnings).toEqual([]);
+    expect(good.data.stop).toBe(150);
+    expect(good.data.target).toBe(250);
   });
 
   test("hidden keyMap fields are excluded from inputSchema validation", () => {
@@ -560,10 +581,10 @@ describe("buildCLICommandValidator", () => {
     makeCmd({
       name: "price",
       summary: "Price",
-      options: [
-        { flag: "--timeframe", arg: "<TF>", desc: "TF" },
-        { flag: "--json", desc: "JSON" },
-      ],
+      inputSchema: z.object({
+        timeframe: z.string().optional().describe("TF"),
+        json: z.boolean().optional().describe("JSON"),
+      }),
     }),
   ];
 

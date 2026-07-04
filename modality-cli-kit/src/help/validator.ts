@@ -89,12 +89,10 @@ export function knownFlags(
   if (extraFlags) for (const f of extraFlags) flags.add(f);
 
   if (command) {
-    // A command's flags may be declared as an explicit `.options` array OR
-    // (for schema-driven commands) derived from its Zod `inputSchema` — the
-    // same way `buildCliFromTools`/help generation derives them. Without the
-    // schema branch, schema-driven commands whose `.options` was never
-    // populated would have all their flags rejected as "unknown".
-    const options = [...(command.options ?? [])];
+    // A command's flags are derived from its Zod `inputSchema` — the same way
+    // help generation derives them. Positional entries contribute their bare
+    // names (e.g. sub-command style "list", "show <id>").
+    const options: Option[] = [...(command.positionals ?? [])];
     if (command.inputSchema instanceof z.ZodObject) {
       options.push(
         ...schemaToCliOptions(
@@ -105,13 +103,11 @@ export function knownFlags(
     }
 
     for (const option of options) {
-      const tokens = option.flag.match(/--[\w][\w-]*/g);
-      if (tokens) for (const t of tokens) flags.add(t);
-      // Also add bare positional flags (e.g. "list", "show <id>")
-      // These don't start with --, so we handle them separately
-      const firstToken = option.flag.split(" ")[0]!;
-      if (!firstToken.startsWith("-")) {
-        flags.add(firstToken);
+      if (option.flag.startsWith("--")) {
+        flags.add(option.flag);
+      } else {
+        // Bare positional names (e.g. "list", "show <id>")
+        flags.add(option.flag.split(" ")[0]!);
       }
     }
   }

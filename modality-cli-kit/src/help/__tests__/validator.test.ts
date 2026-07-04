@@ -12,16 +12,17 @@ import { z } from "zod";
 const sample: CLICommand = makeCmd({
   name: "price",
   summary: "Price analysis",
-  options: [
-    { flag: "--timeframe", arg: "<TF>", desc: "Candle timeframe" },
-    { flag: "--lookback", arg: "<N>", desc: "Lookback window" },
-    { flag: "--json", desc: "JSON output" },
-  ],
+  inputSchema: z.object({
+    timeframe: z.string().optional().describe("Candle timeframe"),
+    lookback: z.coerce.number().optional().describe("Lookback window"),
+    json: z.boolean().optional().describe("JSON output"),
+  }),
+  keyMap: { timeframe: { arg: "<TF>" }, lookback: { arg: "<N>" } },
 });
 
-// Schema-driven command whose flags live in `inputSchema`, not `.options` —
-// mirrors real tool commands (e.g. `connect --auto`). Regression guard: these
-// flags must be derived from the schema, otherwise every one is rejected.
+// Schema-driven command mirroring real tool commands (e.g. `connect --auto`).
+// Regression guard: flags must be derived from the schema, otherwise every
+// one is rejected.
 const schemaDriven: CLICommand = makeCmd({
   name: "connect",
   summary: "Connect to a browser",
@@ -177,10 +178,10 @@ describe("buildFlagRejector", () => {
     makeCmd({
       name: "price",
       summary: "Price",
-      options: [
-        { flag: "--timeframe", arg: "<TF>", desc: "TF" },
-        { flag: "--lookback", arg: "<N>", desc: "LB" },
-      ],
+      inputSchema: z.object({
+        timeframe: z.string().optional().describe("TF"),
+        lookback: z.coerce.number().optional().describe("LB"),
+      }),
     }),
   ];
 

@@ -41,8 +41,8 @@
  * ```
  */
 import { z } from "zod";
-import type { Option, HelpConfig, KeyOverride, CLICommand } from "./types";
-import { schemaToCliOptions, toKebab } from "./zod-cli";
+import type { Option, HelpConfig, CLICommand } from "./types";
+import { schemaToCliOptions, toKebab, buildKeyMap } from "./zod-cli";
 import { generateHelp, generateCommandHelp } from "./generator";
 import { buildFlagRejector } from "./validator";
 
@@ -129,30 +129,21 @@ export function buildCliFromTools(
     // plus any globally skipped fields
     const keyMap = buildKeyMap(tool.positionalKeys, tool.keyMap, skipFields);
 
-    // Derive options/positionals from the tool's inputSchema
-    let toolOptions: Option[] = [];
+    // Derive positionals from the tool's inputSchema (flag options are derived
+    // on the fly by help generation / validation — no need to materialize them)
     let toolPositionals: Option[] = [];
     if (tool.inputSchema instanceof z.ZodObject) {
-      const result = schemaToCliOptions(
+      toolPositionals = schemaToCliOptions(
         tool.inputSchema as z.ZodObject<Record<string, z.ZodTypeAny>>,
         keyMap,
-      );
-      toolOptions = result.options;
-      toolPositionals = result.positionals;
+      ).positionals;
     }
-
-    // Strip --prefix for positional Option entries (the kit uses bare names for positionals)
-    const cleanPositionals = toolPositionals.map((pos) => ({
-      ...pos,
-      flag: pos.flag.replace(/^--/, ""),
-    }));
 
     const command: CLICommand = {
       name: toKebab(name),
       summary: tool.description ?? "",
       inputSchema: tool.inputSchema,
-      options: toolOptions,
-      positionals: cleanPositionals,
+      positionals: toolPositionals,
       examples: tool.examples,
       usage: tool.usage,
       aliases: tool.aliases,
@@ -202,42 +193,4 @@ export function buildCliFromTools(
       return buildFlagRejector(commands, extraFlags);
     },
   };
-}
-
-// ── Internal helpers ─────────────────────────────────────────────────────
-
-/**
- * Merge the positional keys, per-field keyMap, and global skipFields into a
- * single keyMap suitable for passing to `schemaToCliOptions()`.
- */
-function buildKeyMap(
-  positionalKeys: string[] | undefined,
-  keyMap: Record<string, KeyOverride> | undefined,
-  skipFields?: string[],
-): Record<string, KeyOverride> | undefined {
-  const km: Record<string, KeyOverride> = {};
-
-  // Mark globally skipped fields as hidden
-  if (skipFields) {
-    for (const key of skipFields) {
-      km[key] = { ...km[key], hidden: true };
-    }
-  }
-
-  // Copy explicit keyMap entries
-  if (keyMap) {
-    for (const [k, v] of Object.entries(keyMap)) {
-      km[k] = { ...km[k], ...v };
-    }
-  }
-
-  // Annotate positional keys with their index
-  if (positionalKeys) {
-    for (let i = 0; i < positionalKeys.length; i++) {
-      const key = positionalKeys[i]!;
-      km[key] = { ...km[key], position: i };
-    }
-  }
-
-  return Object.keys(km).length > 0 ? km : undefined;
 }

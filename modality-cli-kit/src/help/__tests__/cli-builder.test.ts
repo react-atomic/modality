@@ -41,11 +41,10 @@ describe("buildCliFromTools", () => {
     expect(cli.commands.map((s) => s.name)).toEqual(["click", "convert"]);
   });
 
-  test("maps schema fields to flag options", () => {
-    const cli = build();
-    const click = cli.commands.find((s) => s.name === "click")!;
-    expect(click.options!.map((o) => o.flag)).toContain("--selector");
-    expect(click.options!.map((o) => o.flag)).toContain("--force");
+  test("maps schema fields to flag options in help", () => {
+    const help = build().getHelp("click");
+    expect(help).toContain("--selector");
+    expect(help).toContain("--force");
   });
 
   test("annotated positionals become positional args, not flags", () => {
@@ -53,7 +52,7 @@ describe("buildCliFromTools", () => {
     const convert = cli.commands.find((s) => s.name === "convert")!;
     expect(convert.positionals!.map((p) => p.flag)).toEqual(["symbol", "amount"]);
     // symbol/amount must NOT also appear as flags
-    expect(convert.options!.map((o) => o.flag)).not.toContain("--symbol");
+    expect(cli.getHelp("convert")).not.toContain("--symbol");
   });
 
   test("registers aliases pointing at the canonical name", () => {
@@ -142,10 +141,10 @@ describe("buildCliFromTools", () => {
       ],
       { cliName: "my-cli", tagline: "t", skipFields: ["json"] },
     );
-    const convert = cli.commands.find((s) => s.name === "convert")!;
-    expect(convert.options!.map((o) => o.flag)).not.toContain("--json");
+    const help = cli.getHelp("convert");
+    expect(help).not.toContain("--json");
     // non-skipped fields are unaffected
-    expect(convert.options!.map((o) => o.flag)).toContain("--amount");
+    expect(help).toContain("--amount");
   });
 
   test("skipFields applies even to tools without annotations", () => {
@@ -154,9 +153,9 @@ describe("buildCliFromTools", () => {
       tagline: "t",
       skipFields: ["force"],
     });
-    const click = cli.commands.find((s) => s.name === "click")!;
-    expect(click.options!.map((o) => o.flag)).not.toContain("--force");
-    expect(click.options!.map((o) => o.flag)).toContain("--selector");
+    const help = cli.getHelp("click");
+    expect(help).not.toContain("--force");
+    expect(help).toContain("--selector");
   });
 
   test("per-tool keyMap hidden:false un-hides a globally skipped field", () => {
@@ -174,7 +173,6 @@ describe("buildCliFromTools", () => {
       ],
       { cliName: "my-cli", tagline: "t", skipFields: ["json"] },
     );
-    const convert = cli.commands.find((s) => s.name === "convert")!;
-    expect(convert.options!.map((o) => o.flag)).toContain("--json");
+    expect(cli.getHelp("convert")).toContain("--json");
   });
 });

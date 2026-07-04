@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { z } from "zod";
 import { setNoColor } from "../colors";
 import {
   generateHelp,
@@ -18,10 +19,11 @@ const sampleCLICommands: CLICommand[] = [
   makeCmd({
     name: "price",
     summary: "Price analysis",
-    options: [
-      { flag: "--timeframe", arg: "<TF>", desc: "Candle timeframe" },
-      { flag: "--lookback", arg: "<N>", desc: "Lookback window" },
-    ],
+    inputSchema: z.object({
+      timeframe: z.string().optional().describe("Candle timeframe"),
+      lookback: z.coerce.number().optional().describe("Lookback window"),
+    }),
+    keyMap: { timeframe: { arg: "<TF>" }, lookback: { arg: "<N>" } },
     examples: ["my-cli price 2330", "my-cli price TXF-S"],
   }),
 ];
@@ -199,7 +201,7 @@ describe("generateCommandHelp", () => {
         { flag: "symbol", desc: "Asset symbol", required: true },
         { flag: "amount", arg: "<N>", desc: "Amount", type: "number" },
       ],
-      options: [{ flag: "--json", desc: "JSON output" }],
+      inputSchema: z.object({ json: z.boolean().optional().describe("JSON output") }),
     });
     const help = generateCommandHelp("my-cli", command);
     // Usage line lists positional slots before [options]
@@ -230,5 +232,60 @@ describe("renderSection", () => {
     expect(s).toContain("click");
     expect(s).toContain("Navigate");
     expect(s).toContain("Click element");
+  });
+});
+
+// ── Schema-driven help derivation ──────────────────────────────────────────
+
+describe("inputSchema-driven help", () => {
+  const schemaCmd: CLICommand = makeCmd({
+    name: "backtest",
+    summary: "Score rules",
+    inputSchema: z.object({
+      days: z.coerce.number().int().positive().optional().describe("replay last n days"),
+      symbol: z.string().describe("asset symbol"),
+      json: z.boolean().optional().describe("machine-readable report"),
+    }),
+    positionalKeys: ["symbol"],
+    keyMap: { days: { arg: "<n>" } },
+  });
+
+  test("generateCommandHelp derives options and positionals from inputSchema", () => {
+    const s = generateCommandHelp("my-cli", schemaCmd);
+    expect(s).toContain("--days <n>");
+    expect(s).toContain("replay last n days");
+    expect(s).toContain("--json");
+    expect(s).toContain("machine-readable report");
+    // positional: bare name, in usage and arguments
+    expect(s).toContain("<symbol>");
+    expect(s).toContain("asset symbol");
+    expect(s).not.toContain("--symbol");
+  });
+
+  test("explicit positionals win over inputSchema-derived ones", () => {
+    const manual: CLICommand = makeCmd({
+      name: "manual",
+      summary: "Manual",
+      inputSchema: z.object({ target: z.string().describe("from schema") }),
+      positionalKeys: ["target"],
+      positionals: [{ flag: "list", desc: "sub-command entry" }],
+    });
+    const s = generateCommandHelp("my-cli", manual);
+    expect(s).toContain("<list>");
+    expect(s).not.toContain("<target>");
+  });
+
+  test("command without inputSchema exposes no flags of its own", () => {
+    const bare: CLICommand = makeCmd({ name: "bare", summary: "Bare" });
+    const s = generateCommandHelp("my-cli", bare, [{ flag: "--json", desc: "JSON output" }]);
+    expect(s).toContain("--json");   // global options still render
+    expect(s).toContain("--help");   // fallback help line for commands with no own options
+    expect(s).not.toContain("--bare");
+  });
+
+  test("renderCLICommand (non-compact) derives options from inputSchema", () => {
+    const s = renderCLICommand(schemaCmd, 16, false);
+    expect(s).toContain("--days <n>");
+    expect(s).toContain("<symbol>");
   });
 });
