@@ -39,7 +39,6 @@ import { fuzzySuggestion, DEFAULT_GLOBAL_FLAGS } from "./validator";
 function isBooleanSchema(schema: z.ZodTypeAny): boolean {
   if (schema instanceof z.ZodBoolean) return true;
 
-  // Unwrap Optional/Default/Nullable wrappers via Zod's public API.
   const unwrap = (schema as { unwrap?: () => z.ZodTypeAny }).unwrap;
   if (typeof unwrap === "function") return isBooleanSchema(unwrap.call(schema));
 
@@ -79,7 +78,6 @@ export function inferOptionType(option: Option): z.ZodTypeAny {
       case "string":
         return z.string();
       default:
-        // When no arg → boolean flag; when arg present → string value
         return option.arg ? z.string() : z.boolean();
     }
   };
@@ -219,7 +217,9 @@ export function parseCliArgs<T extends z.ZodRawShape>(
 
   if (!result.success) {
     for (const issue of result.error.issues) {
-      warnings.push(`${issue.path.join(".")}: ${issue.message}`);
+      // Object-level refinements have an empty path — no "field:" prefix
+      const path = issue.path.join(".");
+      warnings.push(path ? `${path}: ${issue.message}` : issue.message);
     }
   }
 

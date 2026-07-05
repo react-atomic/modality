@@ -156,7 +156,7 @@ export function rejectUnknownFlags(
     if (known.includes(flag)) continue;
 
     // --no-<flag> negation: strip prefix and check base flag exists
-    if (flag.startsWith("--no-") && !known.includes(flag)) {
+    if (flag.startsWith("--no-")) {
       const baseFlag = "--" + flag.slice(5);
       if (known.includes(baseFlag)) continue;
     }

@@ -91,7 +91,7 @@ export interface HelpConfig {
   tagline: string;
   /** All commands to list */
   commands: CLICommand[];
-  /** Commands sorted? If false, sorts alphabetically. */
+  /** When false, commands keep their insertion order (default: true = sort). */
   sorted?: boolean;
   /** Global options shown at the bottom of help */
   globalOptions?: Option[];

@@ -275,6 +275,38 @@ describe("inputSchema-driven help", () => {
     expect(s).not.toContain("<target>");
   });
 
+  test("global options duplicated by the command's own schema are skipped", () => {
+    const cmd: CLICommand = makeCmd({
+      name: "backtest",
+      summary: "Backtest",
+      inputSchema: z.object({
+        days: z.coerce.number().optional().describe("replay last n days"),
+        json: z.boolean().optional().describe("machine-readable full report"),
+      }),
+    });
+    const s = generateCommandHelp("my-cli", cmd, [
+      { flag: "--help, -h", desc: "Show this help message" },
+      { flag: "--json", desc: "output JSON" },
+      { flag: "--no-cache", desc: "skip cache" },
+    ]);
+    expect(s.match(/--json/g)).toHaveLength(1);
+    // The command's own description wins over the generic global one
+    expect(s).toContain("machine-readable full report");
+    expect(s).not.toContain("output JSON");
+    // Non-duplicated globals still render
+    expect(s).toContain("--no-cache");
+    expect(s.match(/--help/g)).toHaveLength(1);
+  });
+
+  test("no duplicate --help when global options already list it", () => {
+    const bare: CLICommand = makeCmd({ name: "bare", summary: "Bare" });
+    const s = generateCommandHelp("my-cli", bare, [
+      { flag: "--help, -h", desc: "Show this help message" },
+      { flag: "--json", desc: "JSON output" },
+    ]);
+    expect(s.match(/--help/g)).toHaveLength(1);
+  });
+
   test("command without inputSchema exposes no flags of its own", () => {
     const bare: CLICommand = makeCmd({ name: "bare", summary: "Bare" });
     const s = generateCommandHelp("my-cli", bare, [{ flag: "--json", desc: "JSON output" }]);
@@ -287,5 +319,20 @@ describe("inputSchema-driven help", () => {
     const s = renderCLICommand(schemaCmd, 16, false);
     expect(s).toContain("--days <n>");
     expect(s).toContain("<symbol>");
+  });
+
+  test("schema-defined help flag prevents fallback --help line", () => {
+    const cmd: CLICommand = makeCmd({
+      name: "mycmd",
+      summary: "My command",
+      inputSchema: z.object({
+        help: z.boolean().optional().describe("Show this help message"),
+        json: z.boolean().optional().describe("JSON output"),
+      }),
+    });
+    const s = generateCommandHelp("my-cli", cmd);
+    // The schema-derived --help option appears only once
+    expect(s.match(/--help/g)).toHaveLength(1);
+    expect(s).toContain("Show this help message");
   });
 });

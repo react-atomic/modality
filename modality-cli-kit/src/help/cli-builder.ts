@@ -151,7 +151,8 @@ export function buildCliFromTools(
       // Store the merged keyMap (includes skipFields hidden entries) so
       // downstream validation can exclude hidden fields from the schema.
       keyMap: Object.keys(keyMap ?? {}).length > 0 ? keyMap : tool.keyMap,
-    } as CLICommand;
+      execute: async () => ({}),
+    };
     commands.push(command);
 
     // Register aliases
@@ -185,7 +186,7 @@ export function buildCliFromTools(
         const resolved = alias ?? command;
         const cmd = commands.find((s) => s.name === resolved);
         if (cmd) return generateCommandHelp(cliName, cmd, globalOptions);
-        return generateCommandHelp(cliName, { name: command, summary: `Unknown command "${command}".` } as CLICommand, globalOptions);
+        return generateCommandHelp(cliName, { name: command, summary: `Unknown command "${command}".`, execute: async () => ({}) }, globalOptions);
       }
       return generateHelp(helpConfig);
     },

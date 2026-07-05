@@ -19,16 +19,14 @@ describe("inferOptionType", () => {
     const opt: Option = { flag: "--json", desc: "JSON output" };
     const type = inferOptionType(opt);
     expect(type instanceof z.ZodOptional).toBe(true);
-    const def = type._def as { innerType?: z.ZodTypeAny };
-    expect(def.innerType instanceof z.ZodBoolean).toBe(true);
+    expect((type as z.ZodOptional<z.ZodTypeAny>).unwrap() instanceof z.ZodBoolean).toBe(true);
   });
 
   test("optional string for options with arg", () => {
     const opt: Option = { flag: "--config", arg: "<file>", desc: "Config file" };
     const type = inferOptionType(opt);
     expect(type instanceof z.ZodOptional).toBe(true);
-    const def = type._def as { innerType?: z.ZodTypeAny };
-    expect(def.innerType instanceof z.ZodString).toBe(true);
+    expect((type as z.ZodOptional<z.ZodTypeAny>).unwrap() instanceof z.ZodString).toBe(true);
   });
 
   test("boolean with default true for --no- prefix", () => {
@@ -346,7 +344,7 @@ describe("parseCliArgs", () => {
   });
 
   test("empty args returns empty data and no warnings", () => {
-    const { data, warnings } = parseCliArgs(schema, []);
+    const { warnings } = parseCliArgs(schema, []);
     expect(warnings).toEqual([]);
   });
 
@@ -358,6 +356,23 @@ describe("parseCliArgs", () => {
   test("tokens after `--` are collected as positionals", () => {
     const { positionals } = parseCliArgs(schema, ["--", "--nope", "x"]);
     expect(positionals).toEqual(["--nope", "x"]);
+  });
+
+  test("object-level refinement produces warning without path prefix", () => {
+    const pairedSchema = z
+      .object({
+        stop: z.coerce.number().positive().optional(),
+        target: z.coerce.number().positive().optional(),
+      })
+      .refine((v) => (v.stop === undefined) === (v.target === undefined), {
+        message: "--stop and --target must be provided together",
+      });
+    const { data, warnings } = parseCliArgs(pairedSchema, ["--stop", "150"]);
+    // No ": " prefix because issue.path is empty for object-level refinements
+    expect(warnings[0]).toBe("--stop and --target must be provided together");
+    // Partial data (raw string since validation failed — Zod coercion doesn't apply)
+    // Cast to Record<string, unknown> because the return type is z.output (number)
+    expect((data as Record<string, unknown>).stop).toBe("150");
   });
 });
 
@@ -547,7 +562,9 @@ describe("validateCLICommandArgs", () => {
     });
 
     const bad = validateCLICommandArgs(paired, ["--stop", "150"]);
+    // Object-level refinements have an empty path — no "field:" prefix
     expect(bad.warnings.some((w) => w.includes("provided together"))).toBe(true);
+    expect(bad.warnings[0]).not.toMatch(/^:\s/);
 
     const good = validateCLICommandArgs(paired, ["--stop", "150", "--target", "250"]);
     expect(good.warnings).toEqual([]);

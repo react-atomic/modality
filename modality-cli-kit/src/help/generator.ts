@@ -247,22 +247,33 @@ export function generateCommandHelp(
     out.push("");
   }
 
-  // Options
+  // Options — command's own options render first and win over global ones;
+  // any global option whose flags are all already documented is skipped
+  // (e.g. a schema `json` field vs the global `--json`, or `--help` supplied
+  // in globalOptions vs the built-in fallback line).
   const hasOwnOptions = options.length > 0;
   const hasGlobalOptions = globalOptions && globalOptions.length > 0;
 
   if (hasOwnOptions || hasGlobalOptions) {
+    const flagTokens = (opt: Option): string[] =>
+      opt.flag.match(/--?[\w][\w-]*/g) ?? [opt.flag];
+    const seen = new Set<string>();
+
     out.push(`${c.header("Options:")}`);
     for (const opt of options) {
       out.push(renderOption(opt, false));
+      for (const t of flagTokens(opt)) seen.add(t);
     }
     if (hasGlobalOptions) {
       for (const opt of globalOptions!) {
+        const tokens = flagTokens(opt);
+        if (tokens.every((t) => seen.has(t))) continue; // duplicate of an own option
         out.push(renderOption(opt, false));
+        for (const t of tokens) seen.add(t);
       }
     }
-    if (!hasOwnOptions) {
-      // still show --help even if command has no custom options
+    // Still show --help for commands where nothing else documents it
+    if (!seen.has("--help")) {
       out.push(`  ${c.opt("--help")}, ${c.opt("-h")}          ${c.dim("Show this help message")}`);
     }
     out.push("");
