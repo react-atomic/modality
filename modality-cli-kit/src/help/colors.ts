@@ -70,7 +70,7 @@ export function color(name: ColorName, text: string): string {
 
 // ── Semantic CLI style helpers (bun convention) ────────────────────────────
 
-/** Cyan bold — for command names (e.g. `co-chrome open`) */
+/** Cyan bold — for command names (e.g. `web-cli open`) */
 export const cmd = (text: string): string => wrap(codes.bold + codes.cyan, text);
 
 /** Yellow bold — for section headers (Usage:, Options:, Examples:) */

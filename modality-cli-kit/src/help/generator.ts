@@ -8,8 +8,9 @@
 
 import { z } from "zod";
 import * as c from "./colors";
-import { padName, padVisible, flagPad, visibleWidth, Lines } from "./formatter";
+import { padName, padVisible, flagPad, Lines } from "./formatter";
 import { schemaToCliOptions, buildKeyMap } from "./zod-cli";
+import { optionFlags } from "./validator";
 import type { CLICommand, HelpConfig, Option } from "./types";
 
 /**
@@ -107,9 +108,9 @@ export function renderCLICommand(
  * Generate the main help page listing all commands.
  *
  * ```text
- * co-chrome — Chrome DevTools CLI
+ * web-cli — Browser automation toolkit
  *
- * Usage: co-chrome <command> [options]
+ * Usage: web-cli <command> [options]
  *
  * Commands:
  *   open              Navigate to a URL
@@ -120,7 +121,7 @@ export function renderCLICommand(
  *   --help, -h        Show this help message
  *
  * Examples:
- *   co-chrome open https://example.com
+ *   web-cli open https://example.com
  * ```
  */
 export function generateHelp(config: HelpConfig): string {
@@ -134,7 +135,6 @@ export function generateHelp(config: HelpConfig): string {
     colNameWidth = 16,
   } = config;
 
-  // Sort if not explicitly kept in order
   const sorted = config.sorted !== false;
   const cmds = sorted
     ? [...commands].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
@@ -142,22 +142,18 @@ export function generateHelp(config: HelpConfig): string {
 
   const out = new Lines();
 
-  // Header
   out.push("");
   out.push(`${c.bold(cliName)} ${c.dim(`— ${tagline}`)}`);
   out.push("");
 
-  // Usage
   out.push(`${c.header("Usage:")}  ${c.cmd(cliName)} ${c.arg("<command>")} ${c.dim("[options]")}`);
   out.push("");
 
-  // Commands
   out.push(`${c.header("Commands:")}`);
   for (const cmd of cmds) {
     out.push(renderCLICommand(cmd, colNameWidth, true));
   }
 
-  // Global options
   if (globalOptions && globalOptions.length > 0) {
     out.push("");
     out.push(`${c.header("Global Options:")}`);
@@ -166,7 +162,6 @@ export function generateHelp(config: HelpConfig): string {
     }
   }
 
-  // Examples
   if (globalExamples && globalExamples.length > 0) {
     out.push("");
     out.push(`${c.header("Examples:")}`);
@@ -175,13 +170,11 @@ export function generateHelp(config: HelpConfig): string {
     }
   }
 
-  // Footer
   if (footer) {
     out.push("");
     out.push(c.dim(footer));
   }
 
-  // Hint
   out.push("");
   out.push(c.dim(`Run `) + c.cmd(`${cliName} <command> --help`) + c.dim(` for more information about a command.`));
   out.push("");
@@ -195,18 +188,16 @@ export function generateHelp(config: HelpConfig): string {
  * Generate detailed help for a single CLI command.
  *
  * ```text
- * use-stock price — K 線進場價建議
+ * web-cli open — Navigate to a URL
  *
- * Usage:  use-stock price [symbol] [options]
+ * Usage:  web-cli open <url> [options]
  *
  * Options:
- *   --timeframe <TF>  週期 (default: 1m)
- *   --lookback <N>    觀察窗 (default: 60)
- *   --help, -h        Show this help message
+ *   --wait-until <condition>  Wait: load, domcontentloaded, networkidle
+ *   --help, -h                Show this help message
  *
  * Examples:
- *   use-stock price 2330
- *   use-stock price TXF-S --timeframe 15m
+ *   web-cli open https://example.com
  * ```
  *
  * @param cliName       CLI binary name
@@ -224,7 +215,6 @@ export function generateCommandHelp(
   out.push(`${c.bold(`${cliName} ${command.name}`)} ${c.dim(`— ${command.summary ?? ""}`)}`);
   out.push("");
 
-  // Usage
   if (command.usage && command.usage.length > 0) {
     const [first, ...rest] = command.usage;
     out.push(`${c.header("Usage:")}  ${c.cmd(first!)}`);
@@ -238,7 +228,6 @@ export function generateCommandHelp(
   }
   out.push("");
 
-  // Positional Arguments
   if (positionals.length > 0) {
     out.push(`${c.header("Arguments:")}`);
     for (const pos of positionals) {
@@ -255,18 +244,16 @@ export function generateCommandHelp(
   const hasGlobalOptions = globalOptions && globalOptions.length > 0;
 
   if (hasOwnOptions || hasGlobalOptions) {
-    const flagTokens = (opt: Option): string[] =>
-      opt.flag.match(/--?[\w][\w-]*/g) ?? [opt.flag];
     const seen = new Set<string>();
 
     out.push(`${c.header("Options:")}`);
     for (const opt of options) {
       out.push(renderOption(opt, false));
-      for (const t of flagTokens(opt)) seen.add(t);
+      for (const t of optionFlags([opt])) seen.add(t);
     }
     if (hasGlobalOptions) {
       for (const opt of globalOptions!) {
-        const tokens = flagTokens(opt);
+        const tokens = optionFlags([opt]);
         if (tokens.every((t) => seen.has(t))) continue; // duplicate of an own option
         out.push(renderOption(opt, false));
         for (const t of tokens) seen.add(t);
@@ -274,12 +261,11 @@ export function generateCommandHelp(
     }
     // Still show --help for commands where nothing else documents it
     if (!seen.has("--help")) {
-      out.push(`  ${c.opt("--help")}, ${c.opt("-h")}          ${c.dim("Show this help message")}`);
+      out.push(renderOption({ flag: "--help, -h", desc: "Show this help message" }, false));
     }
     out.push("");
   }
 
-  // Examples
   if (command.examples && command.examples.length > 0) {
     out.push(`${c.header("Examples:")}`);
     for (const ex of command.examples) {

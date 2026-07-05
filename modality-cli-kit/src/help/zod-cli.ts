@@ -162,22 +162,17 @@ export function parseCliArgs<T extends z.ZodRawShape>(
       continue;
     }
 
-    // --<flag>[=<value>] or --<flag> <value>
+    // --<flag>[=<value>], -<f>[=<value>], or flag followed by a value token
     const eqIdx = a.indexOf("=");
-    let key: string;
-    let value: string | undefined;
-
-    if (eqIdx !== -1) {
-      key = a.slice(2, eqIdx);
-      value = a.slice(eqIdx + 1);
-    } else {
-      key = a.slice(2);
-    }
+    const raw = eqIdx !== -1 ? a.slice(0, eqIdx) : a;
+    const key = raw.startsWith("--") ? raw.slice(2) : raw.slice(1);
+    let value: string | undefined =
+      eqIdx !== -1 ? a.slice(eqIdx + 1) : undefined;
 
     if (!shapeKeys.has(key)) {
       const suggestion = fuzzySuggestion(key, [...shapeKeys]);
       warnings.push(
-        `Unknown flag --${key}${suggestion ? `. Did you mean --${suggestion}?` : ""}`,
+        `Unknown flag ${raw}${suggestion ? `. Did you mean --${suggestion}?` : ""}`,
       );
       continue;
     }
@@ -421,8 +416,10 @@ export function buildKeyMap(
 // ── Schema helpers ──────────────────────────────────────────────────
 
 /**
- * Merge global default flags (--help, --json, --no-cache) into a Zod schema
- * so they are recognized as valid flags instead of flagged as unknown.
+ * Merge global default flags (--help, --json, --no-cache) plus any
+ * `extraFlags` into a Zod schema so they are recognized as valid flags
+ * instead of flagged as unknown. Extra flags add to the defaults — matching
+ * `knownFlags()` — they do not replace them.
  *
  * Uses `.safeExtend()` so object-level refinements (e.g. "--stop and --target
  * must be provided together") survive the merge — rebuilding via `z.object()`
@@ -435,7 +432,7 @@ function mergeDefaultFlags(
   extraFlags?: string[],
 ): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const extra: Record<string, z.ZodTypeAny> = {};
-  const flags = extraFlags ?? [...DEFAULT_GLOBAL_FLAGS];
+  const flags = [...DEFAULT_GLOBAL_FLAGS, ...(extraFlags ?? [])];
 
   for (const flag of flags) {
     if (!flag.startsWith("--")) continue; // skip short flags like -h

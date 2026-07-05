@@ -7,7 +7,7 @@
  *
  * Per-tool CLI metadata (which schema fields are positional, command aliases,
  * usage examples, flag name overrides) can be embedded on each tool object
- * via the `CLICommand` interface fields (positionals, keyMap, examples, aliases).
+ * via the `CLICommand` interface fields (positionalKeys, keyMap, examples, aliases).
  *
  * @example
  * ```ts
@@ -22,7 +22,7 @@
  *       selector: z.string().describe("CSS selector"),
  *       force: z.boolean().optional().describe("Force click"),
  *     }),
- *     positionals: ["selector"],
+ *     positionalKeys: ["selector"],
  *     examples: ["my-cli click .btn"],
  *   },
  * ];
@@ -46,22 +46,18 @@ import { schemaToCliOptions, toKebab, buildKeyMap } from "./zod-cli";
 import { generateHelp, generateCommandHelp } from "./generator";
 import { buildFlagRejector } from "./validator";
 
-/** Options for `buildCliFromTools`. */
-export interface BuildCliFromToolsOptions {
-  /** CLI binary name (e.g. "my-cli", "co-chrome"). */
-  cliName: string;
-  /** One-line tagline shown at the top of global help. */
-  tagline: string;
+/**
+ * Options for `buildCliFromTools` — all `HelpConfig` fields (except the
+ * derived `commands`/`globalOptions`) pass through to the help page.
+ */
+export interface BuildCliFromToolsOptions
+  extends Omit<HelpConfig, "commands" | "globalOptions"> {
   /**
    * Zod schema for global CLI flags.
    * Each field becomes an `Option` in the global options section.
    * Flags like `--help`, `-h`, `--json` are always included by default.
    */
   globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>;
-  /** Global usage examples. */
-  globalExamples?: string[];
-  /** Footer text (e.g. environment hints, color toggle note). */
-  footer?: string;
   /**
    * Schema keys to skip during CLI flag/positional generation for ALL tools.
    * Useful for fields shared by every tool (like `BaseArgsSchema` fields)
@@ -102,7 +98,7 @@ export interface CliBuildResult {
  * Build ready-to-use CLI definitions from a collection of AI tool definitions.
  *
  * Each tool's Zod `inputSchema` is walked to derive `Option[]` for flags
- * and positional arguments. CLI metadata (positionals, aliases, examples)
+ * and positional arguments. CLI metadata (positionalKeys, aliases, examples)
  * is read from the `CLICommand` fields on each tool object.
  *
  * The returned `CliBuildResult` includes:
@@ -115,8 +111,8 @@ export function buildCliFromTools(
   tools: Partial<CLICommand>[],
   options: BuildCliFromToolsOptions,
 ): CliBuildResult {
-  const { cliName, tagline, globalOptionsSchema, globalExamples, footer, skipFields } =
-    options;
+  const { globalOptionsSchema, skipFields, ...helpFields } = options;
+  const { cliName } = helpFields;
 
   const aliases: Record<string, string> = {};
   const commands: CLICommand[] = [];
@@ -125,8 +121,6 @@ export function buildCliFromTools(
     const name = tool.name ?? "";
     if (!name) continue;
 
-    // Collect keyMap from: positionalKeys array OR per-field keyMap,
-    // plus any globally skipped fields
     const keyMap = buildKeyMap(tool.positionalKeys, tool.keyMap, skipFields);
 
     // Derive positionals from the tool's inputSchema (flag options are derived
@@ -148,32 +142,27 @@ export function buildCliFromTools(
       usage: tool.usage,
       aliases: tool.aliases,
       positionalKeys: tool.positionalKeys,
-      // Store the merged keyMap (includes skipFields hidden entries) so
-      // downstream validation can exclude hidden fields from the schema.
-      keyMap: Object.keys(keyMap ?? {}).length > 0 ? keyMap : tool.keyMap,
+      // Merged keyMap (includes skipFields hidden entries) so downstream
+      // validation can exclude hidden fields from the schema.
+      keyMap,
       execute: async () => ({}),
     };
     commands.push(command);
 
-    // Register aliases
     for (const alias of command.aliases ?? []) {
       aliases[alias] = command.name ?? "";
     }
   }
 
-  // Build the global options list from the globalOptionsSchema
   let globalOptions: Option[] | undefined;
   if (globalOptionsSchema) {
     globalOptions = schemaToCliOptions(globalOptionsSchema).options;
   }
 
   const helpConfig: HelpConfig = {
-    cliName,
-    tagline,
+    ...helpFields,
     commands,
     globalOptions,
-    globalExamples,
-    footer,
   };
 
   return {

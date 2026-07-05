@@ -85,7 +85,7 @@ export interface CLICommand extends AITool<any, z.ZodTypeAny> {
 
 /** Global help page configuration */
 export interface HelpConfig {
-  /** CLI binary name, e.g. "co-chrome", "use-stock" */
+  /** CLI binary name, e.g. "web-cli", "my-cli" */
   cliName: string;
   /** One-line tagline shown at the top, e.g. "Taiwan stock & TX futures CLI toolkit" */
   tagline: string;

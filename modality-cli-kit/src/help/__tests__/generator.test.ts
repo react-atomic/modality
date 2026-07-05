@@ -321,6 +321,30 @@ describe("inputSchema-driven help", () => {
     expect(s).toContain("<symbol>");
   });
 
+  test("global --no-cache skipped when command schema has noCache", () => {
+    const cmd: CLICommand = makeCmd({
+      name: "cached",
+      summary: "Cached operation",
+      inputSchema: z.object({
+        noCache: z.boolean().default(true).describe("skip disk cache"),
+        verbose: z.boolean().optional().describe("verbose logging"),
+      }),
+    });
+    // normalizing noCache → no-cache in schema means the global --no-cache
+    // token matches and gets deduped
+    const s = generateCommandHelp("my-cli", cmd, [
+      { flag: "--json", desc: "JSON output" },
+      { flag: "--no-cache", desc: "disable cache" },
+    ]);
+    // (schema-driven --no-cache already renders it once per schema own options)
+    // own options = --no-cache + --verbose (both from the schema)
+    // global --no-cache should be deduped; global --json should still appear
+    expect(s.match(/--no-cache/g)).toHaveLength(1);
+    expect(s).toContain("skip disk cache");
+    expect(s).toContain("--json");
+    expect(s).toContain("--verbose");
+  });
+
   test("schema-defined help flag prevents fallback --help line", () => {
     const cmd: CLICommand = makeCmd({
       name: "mycmd",

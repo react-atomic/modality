@@ -8,6 +8,7 @@ import {
   schemaToCliOptions,
   toKebab,
   normalizeSchemaKeys,
+  buildKeyMap,
 } from "../zod-cli";
 import type { Option, CLICommand } from "../types";
 import { makeCmd } from "./helpers";
@@ -187,6 +188,63 @@ describe("schemaToCliOptions", () => {
   });
 });
 
+// ── buildKeyMap ───────────────────────────────────────────────────────
+
+describe("buildKeyMap", () => {
+  test("empty inputs returns undefined", () => {
+    expect(buildKeyMap(undefined, undefined)).toBeUndefined();
+    expect(buildKeyMap([], {})).toBeUndefined();
+    expect(buildKeyMap([], undefined, [])).toBeUndefined();
+  });
+
+  test("skipFields marks each field as hidden", () => {
+    const km = buildKeyMap(undefined, undefined, ["secret", "token"]);
+    expect(km).toBeDefined();
+    expect(km!["secret"]).toEqual({ hidden: true });
+    expect(km!["token"]).toEqual({ hidden: true });
+  });
+
+  test("keyMap entries are preserved", () => {
+    const km = buildKeyMap(undefined, { timeout: { arg: "<ms>", flag: "--timeout-ms" } });
+    expect(km).toBeDefined();
+    expect(km!["timeout"]).toEqual({ arg: "<ms>", flag: "--timeout-ms" });
+  });
+
+  test("positionalKeys set position indices in order", () => {
+    const km = buildKeyMap(["symbol", "amount"], undefined);
+    expect(km).toBeDefined();
+    expect(km!["symbol"]).toEqual({ position: 0 });
+    expect(km!["amount"]).toEqual({ position: 1 });
+  });
+
+  test("explicit keyMap overrides do not clobber skipFields hidden mark", () => {
+    const km = buildKeyMap(undefined, { secret: { flag: "--show-secret" } }, ["secret"]);
+    expect(km!["secret"]).toEqual({ hidden: true, flag: "--show-secret" });
+  });
+
+  test("keyMap can un-hide a globally skipped field", () => {
+    const km = buildKeyMap(undefined, { secret: { hidden: false } }, ["secret"]);
+    expect(km!["secret"]).toEqual({ hidden: false });
+  });
+
+  test("positionalKeys coexist with skipFields", () => {
+    const km = buildKeyMap(["symbol"], undefined, ["token"]);
+    expect(km!["symbol"]).toEqual({ position: 0 });
+    expect(km!["token"]).toEqual({ hidden: true });
+  });
+
+  test("all sources merge into one map", () => {
+    const km = buildKeyMap(
+      ["symbol"],
+      { symbol: { flag: "--sym" }, amount: { arg: "<N>" } },
+      ["secret"],
+    );
+    expect(km!["symbol"]).toEqual({ position: 0, flag: "--sym" });
+    expect(km!["amount"]).toEqual({ arg: "<N>" });
+    expect(km!["secret"]).toEqual({ hidden: true });
+  });
+});
+
 // ── normalizeSchemaKeys ──────────────────────────────────────────────
 
 describe("normalizeSchemaKeys", () => {
@@ -313,6 +371,18 @@ describe("parseCliArgs", () => {
     expect(warnings[0]).toContain("Unknown flag");
   });
 
+  test("short flags map to single-character schema keys", () => {
+    const short = z.object({ f: z.boolean().optional() });
+    const { data, warnings } = parseCliArgs(short, ["-f"]);
+    expect(data.f).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  test("unknown short flag warning echoes the actual token", () => {
+    const { warnings } = parseCliArgs(schema, ["-x"]);
+    expect(warnings[0]).toContain("Unknown flag -x");
+  });
+
   test("fuzzy-match suggests correction", () => {
     const { warnings } = parseCliArgs(schema, ["--verobse"]);
     expect(warnings.length).toBeGreaterThan(0);
@@ -414,6 +484,11 @@ describe("validateCLICommandArgs", () => {
     const noOpts: CLICommand = makeCmd({ name: "open", summary: "Open URL" });
     const result = validateCLICommandArgs(noOpts, ["--help", "--json"]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test("extraFlags add to the default global flags instead of replacing them", () => {
+    const { warnings } = validateCLICommandArgs(sample, ["--json", "--format"], ["--format"]);
+    expect(warnings).toEqual([]);
   });
 
   // ── positionals ────────────────────────────────────────────────────

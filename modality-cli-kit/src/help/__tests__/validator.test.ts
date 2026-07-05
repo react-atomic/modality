@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   levenshtein,
+  optionFlags,
   knownFlags,
   rejectUnknownFlags,
   buildFlagRejector,
@@ -58,6 +59,38 @@ describe("levenshtein", () => {
   });
 });
 
+describe("optionFlags", () => {
+  test("extracts flag strings from Option[]", () => {
+    const flags = optionFlags([
+      { flag: "--headed", desc: "Run headed" },
+      { flag: "--user-data-dir", arg: "<dir>", desc: "Profile dir" },
+    ]);
+    expect(flags).toEqual(["--headed", "--user-data-dir"]);
+  });
+
+  test("splits combined declarations like \"--help, -h\"", () => {
+    const flags = optionFlags([{ flag: "--help, -h", desc: "Show help" }]);
+    expect(flags).toEqual(["--help", "-h"]);
+  });
+
+  test("feeds rejectUnknownFlags as extraFlags", () => {
+    const globalOptions = [{ flag: "--user-data-dir", arg: "<dir>", desc: "Profile dir" }];
+    const warnings = rejectUnknownFlags(null, ["--user-data-dir", "/tmp/x"], optionFlags(globalOptions));
+    expect(warnings).toEqual([]);
+  });
+
+  test("empty array returns empty array", () => {
+    expect(optionFlags([])).toEqual([]);
+  });
+
+  test("returns original flag when regex does not match (fallback path)", () => {
+    // A bare dash or empty string won't match the regex (needs a word char
+    // after the optional second dash), exercising the ?? [opt.flag] fallback
+    const flags = optionFlags([{ flag: "-", desc: "Degenerate flag" }]);
+    expect(flags).toEqual(["-"]);
+  });
+});
+
 describe("knownFlags", () => {
   test("includes default global flags", () => {
     const flags = knownFlags(null);
@@ -70,6 +103,18 @@ describe("knownFlags", () => {
     const flags = knownFlags(sample);
     expect(flags).toContain("--timeframe");
     expect(flags).toContain("--lookback");
+  });
+
+  test("splits combined flag declarations into individual flags", () => {
+    const combined = makeCmd({
+      name: "x",
+      summary: "x",
+      positionals: [{ flag: "--verbose, -v", desc: "Verbose output" }],
+    });
+    const flags = knownFlags(combined);
+    expect(flags).toContain("--verbose");
+    expect(flags).toContain("-v");
+    expect(flags).not.toContain("--verbose, -v");
   });
 
   test("deduplicates", () => {

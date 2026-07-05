@@ -75,6 +75,21 @@ export const DEFAULT_GLOBAL_FLAGS = new Set(["--help", "-h", "--json", "--no-cac
 // ── Known-flag extraction ─────────────────────────────────────────────────
 
 /**
+ * Flatten an `Option[]` into its flag strings, splitting combined
+ * declarations like `"--help, -h"` into individual flags.
+ *
+ * Useful for feeding a shared global `Option[]` into the `extraFlags`
+ * parameter of `knownFlags()` / `rejectUnknownFlags()`:
+ *
+ * ```ts
+ * const warnings = rejectUnknownFlags(null, argv, optionFlags(globalOptions));
+ * ```
+ */
+export function optionFlags(options: Option[]): string[] {
+  return options.flatMap((o) => o.flag.match(/--?[\w][\w-]*/g) ?? [o.flag]);
+}
+
+/**
  * Extract the set of known flags for a command.
  *
  * @param command     The command descriptor (or `null`/`undefined` for top-level)
@@ -103,8 +118,9 @@ export function knownFlags(
     }
 
     for (const option of options) {
-      if (option.flag.startsWith("--")) {
-        flags.add(option.flag);
+      if (option.flag.startsWith("-")) {
+        // Split combined declarations ("--help, -h") into individual flags
+        for (const f of optionFlags([option])) flags.add(f);
       } else {
         // Bare positional names (e.g. "list", "show <id>")
         flags.add(option.flag.split(" ")[0]!);

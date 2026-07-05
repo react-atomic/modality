@@ -64,6 +64,7 @@ export {
 export {
   levenshtein,
   fuzzySuggestion,
+  optionFlags,
   knownFlags,
   rejectUnknownFlags,
   buildFlagRejector,
