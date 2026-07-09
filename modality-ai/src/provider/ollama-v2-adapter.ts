@@ -1,215 +1,583 @@
 /**
- * Ollama V2 Adapter
- * 
- * Clean V2-only adapter for ollama-ai-provider that converts V1 models to V2 interfaces.
- * This adapter ensures compatibility with AI SDK 5.0 by providing V2-compliant models.
+ * Ollama Provider (V4 spec, native for ai@7.x)
+ *
+ * Standalone provider for Ollama that talks to the Ollama REST API directly
+ * (no `ollama-ai-provider` dependency). Implements the LanguageModelV4 and
+ * EmbeddingModelV4 specifications — the native spec for ai@7.x.
+ *
+ * API reference: https://github.com/ollama/ollama/blob/main/docs/api.md
+ * (message conversion modeled after https://github.com/sgomez/ollama-ai-provider)
  */
 
-import { createOllama, type OllamaProvider } from 'ollama-ai-provider';
-import type { 
-  LanguageModelV2, 
-  EmbeddingModelV2,
-  LanguageModelV2CallOptions,
-  LanguageModelV2FinishReason,
-  LanguageModelV2Content,
-  LanguageModelV2Usage,
-  LanguageModelV2CallWarning,
-  LanguageModelV2ResponseMetadata,
-  SharedV2ProviderMetadata
-} from '@ai-sdk/provider';
+import type {
+  EmbeddingModelV4,
+  EmbeddingModelV4CallOptions,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+  LanguageModelV4FinishReason,
+  LanguageModelV4Prompt,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Usage,
+  SharedV4Warning,
+} from "@ai-sdk/provider";
+
+const DEFAULT_BASE_URL = "http://localhost:11434/api";
 
 /**
- * V2-compliant Language Model adapter for Ollama
+ * Ollama REST API wire types (subset used by this provider)
  */
-class OllamaLanguageModelV2 implements LanguageModelV2 {
-  readonly specificationVersion = "v2" as const;
-  readonly provider: string;
+interface OllamaToolCall {
+  function: {
+    name: string;
+    arguments: unknown;
+  };
+}
+
+/** @internal exported for testing */
+export interface OllamaMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  images?: string[];
+  tool_calls?: OllamaToolCall[];
+}
+
+/** @internal exported for testing */
+export interface OllamaChatResponse {
+  model?: string;
+  created_at?: string;
+  message?: {
+    role?: string;
+    content?: string;
+    tool_calls?: OllamaToolCall[];
+  };
+  done?: boolean;
+  done_reason?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+  error?: string;
+}
+
+/** @internal exported for testing */
+export interface OllamaEmbedResponse {
+  embeddings: number[][];
+  prompt_eval_count?: number;
+  error?: string;
+}
+
+/**
+ * Accept both `http://host:11434` and `http://host:11434/api` forms.
+ * @internal exported for testing
+ */
+export function normalizeBaseURL(baseURL?: string): string {
+  const url = (baseURL || DEFAULT_BASE_URL).replace(/\/+$/, "");
+  return url.endsWith("/api") ? url : `${url}/api`;
+}
+
+/** @internal exported for testing */
+export function toBase64(data: Uint8Array | string | URL): string {
+  if (data instanceof Uint8Array) {
+    return Buffer.from(data).toString("base64");
+  }
+  const text = data instanceof URL ? data.toString() : data;
+  const dataUrlMatch = text.match(/^data:[^;]*;base64,(.+)$/);
+  if (dataUrlMatch) {
+    return dataUrlMatch[1];
+  }
+  return text;
+}
+
+/**
+ * Safely parse JSON — returns `fallback` on failure instead of throwing.
+ * @internal exported for testing
+ */
+export function safeParseJson(input: string, fallback: unknown = {}): unknown {
+  try {
+    return JSON.parse(input);
+  } catch {
+    return fallback;
+  }
+}
+
+/** @internal exported for testing */
+export function mapFinishReason(doneReason?: string): LanguageModelV4FinishReason {
+  let unified: LanguageModelV4FinishReason["unified"];
+  switch (doneReason) {
+    case "stop":
+    case undefined:
+      unified = "stop";
+      break;
+    case "length":
+      unified = "length";
+      break;
+    default:
+      unified = "other";
+  }
+  return { unified, raw: doneReason };
+}
+
+/** @internal exported for testing */
+export function mapUsage(response: OllamaChatResponse): LanguageModelV4Usage {
+  const inputTokens = response.prompt_eval_count;
+  const outputTokens = response.eval_count;
+  return {
+    inputTokens: {
+      total: inputTokens,
+      noCache: inputTokens,
+      cacheRead: undefined,
+      cacheWrite: undefined,
+    },
+    outputTokens: {
+      total: outputTokens,
+      text: outputTokens,
+      reasoning: undefined,
+    },
+  };
+}
+
+let toolCallCounter = 0;
+
+function nextToolCallId(): string {
+  toolCallCounter += 1;
+  return `ollama-tool-call-${toolCallCounter}`;
+}
+
+/**
+ * Convert an AI SDK V4 prompt into Ollama chat messages.
+ * @internal exported for testing
+ */
+export function convertToOllamaMessages(prompt: LanguageModelV4Prompt): {
+  messages: OllamaMessage[];
+  warnings: SharedV4Warning[];
+} {
+  const messages: OllamaMessage[] = [];
+  const warnings: SharedV4Warning[] = [];
+
+  for (const message of prompt) {
+    switch (message.role) {
+      case "system": {
+        messages.push({ role: "system", content: message.content });
+        break;
+      }
+
+      case "user": {
+        let content = "";
+        const images: string[] = [];
+        for (const part of message.content) {
+          if (part.type === "text") {
+            content += part.text;
+          } else if (
+            part.mediaType.startsWith("image/") &&
+            part.data.type === "data"
+          ) {
+            images.push(toBase64(part.data.data));
+          } else {
+            warnings.push({
+              type: "unsupported",
+              feature: `file part (${part.mediaType}, ${part.data.type})`,
+            });
+          }
+        }
+        messages.push({
+          role: "user",
+          content,
+          ...(images.length > 0 ? { images } : {}),
+        });
+        break;
+      }
+
+      case "assistant": {
+        let content = "";
+        const toolCalls: OllamaToolCall[] = [];
+        for (const part of message.content) {
+          if (part.type === "text") {
+            content += part.text;
+          } else if (part.type === "tool-call") {
+            toolCalls.push({
+              function: {
+                name: part.toolName,
+                arguments:
+                  typeof part.input === "string"
+                    ? safeParseJson(part.input, {})
+                    : part.input,
+              },
+            });
+          }
+          // reasoning / file / tool-result parts have no Ollama equivalent
+        }
+        messages.push({
+          role: "assistant",
+          content,
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        });
+        break;
+      }
+
+      case "tool": {
+        for (const part of message.content) {
+          if (part.type !== "tool-result") {
+            continue;
+          }
+          const output = part.output;
+          let content: string;
+          switch (output.type) {
+            case "text":
+            case "error-text":
+              content = output.value;
+              break;
+            case "execution-denied":
+              content = output.reason ?? "Tool execution denied";
+              break;
+            default:
+              content = JSON.stringify(output.value);
+          }
+          messages.push({ role: "tool", content });
+        }
+        break;
+      }
+    }
+  }
+
+  return { messages, warnings };
+}
+
+/**
+ * Convert AI SDK V4 call options into an Ollama /api/chat request body.
+ * @internal exported for testing
+ */
+export function buildChatRequest(
+  modelId: string,
+  options: LanguageModelV4CallOptions,
+  stream: boolean
+): { body: Record<string, unknown>; warnings: SharedV4Warning[] } {
+  const { messages, warnings } = convertToOllamaMessages(options.prompt);
+
+  const ollamaOptions: Record<string, unknown> = {};
+  if (options.maxOutputTokens != null)
+    ollamaOptions.num_predict = options.maxOutputTokens;
+  if (options.temperature != null)
+    ollamaOptions.temperature = options.temperature;
+  if (options.topP != null) ollamaOptions.top_p = options.topP;
+  if (options.topK != null) ollamaOptions.top_k = options.topK;
+  if (options.presencePenalty != null)
+    ollamaOptions.presence_penalty = options.presencePenalty;
+  if (options.frequencyPenalty != null)
+    ollamaOptions.frequency_penalty = options.frequencyPenalty;
+  if (options.stopSequences?.length) ollamaOptions.stop = options.stopSequences;
+  if (options.seed != null) ollamaOptions.seed = options.seed;
+
+  const body: Record<string, unknown> = {
+    model: modelId,
+    messages,
+    stream,
+    ...(Object.keys(ollamaOptions).length > 0
+      ? { options: ollamaOptions }
+      : {}),
+  };
+
+  if (options.responseFormat?.type === "json") {
+    body.format = options.responseFormat.schema ?? "json";
+  }
+
+  if (options.tools?.length) {
+    const tools: unknown[] = [];
+    for (const tool of options.tools) {
+      if (tool.type === "function") {
+        tools.push({
+          type: "function",
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema,
+          },
+        });
+      } else {
+        warnings.push({
+          type: "unsupported",
+          feature: `provider-defined tool: ${tool.name}`,
+        });
+      }
+    }
+    if (tools.length > 0) {
+      body.tools = tools;
+    }
+  }
+
+  if (options.toolChoice && options.toolChoice.type !== "auto") {
+    warnings.push({
+      type: "unsupported",
+      feature: "toolChoice",
+      details: "Ollama only supports automatic tool choice",
+    });
+  }
+
+  return { body, warnings };
+}
+
+interface OllamaRequestContext {
+  baseURL: string;
+  headers: Record<string, string>;
+  fetch: typeof globalThis.fetch;
+}
+
+async function postToOllama(
+  context: OllamaRequestContext,
+  path: string,
+  body: Record<string, unknown>,
+  callHeaders?: Record<string, string | undefined>,
+  abortSignal?: AbortSignal
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...context.headers,
+  };
+  for (const [key, value] of Object.entries(callHeaders ?? {})) {
+    if (value != null) headers[key] = value;
+  }
+
+  const response = await context.fetch(`${context.baseURL}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: abortSignal ?? AbortSignal.timeout(60_000),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      `Ollama request failed (${response.status} ${response.statusText}): ${errorText}`
+    );
+  }
+
+  return response;
+}
+
+/**
+ * V4-compliant Language Model for Ollama
+ */
+class OllamaLanguageModel implements LanguageModelV4 {
+  readonly specificationVersion = "v4" as const;
+  readonly provider = "ollama";
   readonly modelId: string;
   readonly supportedUrls: Record<string, RegExp[]> = {};
 
-  private v1Model: any;
+  private context: OllamaRequestContext;
 
-  constructor(v1Model: any, provider: string, modelId: string) {
-    this.v1Model = v1Model;
-    this.provider = provider;
+  constructor(modelId: string, context: OllamaRequestContext) {
     this.modelId = modelId;
+    this.context = context;
   }
 
-  async doGenerate(options: LanguageModelV2CallOptions) {
-    // Convert V2 options to V1 format
-    const v1Options = {
-      messages: options.prompt,
-      temperature: options.temperature,
-      maxTokens: options.maxOutputTokens,
-      topP: options.topP,
-      frequencyPenalty: options.frequencyPenalty,
-      presencePenalty: options.presencePenalty,
-      abortSignal: options.abortSignal,
-      headers: options.headers,
-    };
+  async doGenerate(options: LanguageModelV4CallOptions) {
+    const { body, warnings } = buildChatRequest(this.modelId, options, false);
 
-    // Call V1 model
-    const v1Result = await this.v1Model.doGenerate(v1Options);
+    const response = await postToOllama(
+      this.context,
+      "/chat",
+      body,
+      options.headers,
+      options.abortSignal
+    );
+    const result = (await response.json()) as OllamaChatResponse;
 
-    // Convert V1 result to V2 format
-    const content: LanguageModelV2Content[] = [
-      {
-        type: 'text',
-        text: v1Result.text
-      }
-    ];
+    if (result.error) {
+      throw new Error(`Ollama error: ${result.error}`);
+    }
 
-    const finishReason: LanguageModelV2FinishReason = 
-      v1Result.finishReason === 'stop' ? 'stop' :
-      v1Result.finishReason === 'length' ? 'length' :
-      v1Result.finishReason === 'content-filter' ? 'content-filter' :
-      v1Result.finishReason === 'tool-calls' ? 'tool-calls' :
-      'other';
+    const content: LanguageModelV4Content[] = [];
+    if (result.message?.content) {
+      content.push({ type: "text", text: result.message.content });
+    }
+    const toolCalls = result.message?.tool_calls ?? [];
+    for (const toolCall of toolCalls) {
+      content.push({
+        type: "tool-call",
+        toolCallId: nextToolCallId(),
+        toolName: toolCall.function.name,
+        input: JSON.stringify(toolCall.function.arguments ?? {}),
+      });
+    }
 
-    const usage: LanguageModelV2Usage = {
-      inputTokens: v1Result.usage.promptTokens || v1Result.usage.inputTokens || 0,
-      outputTokens: v1Result.usage.completionTokens || v1Result.usage.outputTokens || 0,
-      totalTokens: v1Result.usage.totalTokens || undefined
-    };
-
-    const warnings: LanguageModelV2CallWarning[] = [];
-    
-    const providerMetadata: SharedV2ProviderMetadata = {
-      ollama: {
-        id: `ollama-${this.modelId}-${Date.now()}`,
-        timestamp: new Date().toISOString()
-      }
-    };
-
-    const responseMetadata: LanguageModelV2ResponseMetadata = {
-      id: `ollama-${this.modelId}-${Date.now()}`,
-      timestamp: new Date()
-    };
+    const finishReason: LanguageModelV4FinishReason =
+      toolCalls.length > 0
+        ? { unified: "tool-calls", raw: result.done_reason }
+        : mapFinishReason(result.done_reason);
 
     return {
       content,
       finishReason,
-      usage,
+      usage: mapUsage(result),
       warnings,
-      providerMetadata,
-      response: responseMetadata
+      request: { body },
+      response: {
+        id: `ollama-${this.modelId}-${Date.now()}`,
+        modelId: result.model ?? this.modelId,
+        timestamp: result.created_at ? new Date(result.created_at) : new Date(),
+      },
     };
   }
 
-  async doStream(options: LanguageModelV2CallOptions) {
-    // Convert V2 options to V1 format
-    const v1Options = {
-      messages: options.prompt,
-      temperature: options.temperature,
-      maxTokens: options.maxOutputTokens,
-      topP: options.topP,
-      frequencyPenalty: options.frequencyPenalty,
-      presencePenalty: options.presencePenalty,
-      abortSignal: options.abortSignal,
-      headers: options.headers,
-    };
+  async doStream(options: LanguageModelV4CallOptions) {
+    const { body, warnings } = buildChatRequest(this.modelId, options, true);
+    const modelId = this.modelId;
 
-    // Call V1 model stream
-    const v1Result = await this.v1Model.doStream(v1Options);
+    const response = await postToOllama(
+      this.context,
+      "/chat",
+      body,
+      options.headers,
+      options.abortSignal
+    );
 
-    // Create V2-compatible stream
-    const v2Stream = new ReadableStream({
+    if (!response.body) {
+      throw new Error("Ollama streaming response has no body");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    const stream = new ReadableStream<LanguageModelV4StreamPart>({
       async start(controller) {
-        const reader = v1Result.stream.getReader();
-        
+        controller.enqueue({ type: "stream-start", warnings });
+        controller.enqueue({
+          type: "response-metadata",
+          id: `ollama-${modelId}-${Date.now()}`,
+          modelId,
+          timestamp: new Date(),
+        });
+
+        const textId = "text-0";
+        let textStarted = false;
+        let hasToolCalls = false;
+        let finishReason: LanguageModelV4FinishReason = {
+          unified: "stop",
+          raw: undefined,
+        };
+        let usage = mapUsage({});
+        let buffer = "";
+
+        const processLine = (line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+
+          const chunk = JSON.parse(trimmed) as OllamaChatResponse;
+          if (chunk.error) {
+            controller.enqueue({
+              type: "error",
+              error: new Error(`Ollama error: ${chunk.error}`),
+            });
+            return;
+          }
+
+          if (chunk.message?.content) {
+            if (!textStarted) {
+              textStarted = true;
+              controller.enqueue({ type: "text-start", id: textId });
+            }
+            controller.enqueue({
+              type: "text-delta",
+              id: textId,
+              delta: chunk.message.content,
+            });
+          }
+
+          for (const toolCall of chunk.message?.tool_calls ?? []) {
+            hasToolCalls = true;
+            controller.enqueue({
+              type: "tool-call",
+              toolCallId: nextToolCallId(),
+              toolName: toolCall.function.name,
+              input: JSON.stringify(toolCall.function.arguments ?? {}),
+            });
+          }
+
+          if (chunk.done) {
+            finishReason = hasToolCalls
+              ? { unified: "tool-calls", raw: chunk.done_reason }
+              : mapFinishReason(chunk.done_reason);
+            usage = mapUsage(chunk);
+          }
+        };
+
         try {
           while (true) {
             const { done, value } = await reader.read();
-            
             if (done) break;
-            
-            // Convert V1 stream parts to V2 format
-            if (value.type === 'text-delta') {
-              controller.enqueue({
-                type: 'content-delta',
-                delta: {
-                  type: 'text',
-                  text: value.textDelta
-                }
-              });
-            } else if (value.type === 'finish') {
-              const finishReason: LanguageModelV2FinishReason = 
-                value.finishReason === 'stop' ? 'stop' :
-                value.finishReason === 'length' ? 'length' :
-                value.finishReason === 'content-filter' ? 'content-filter' :
-                value.finishReason === 'tool-calls' ? 'tool-calls' :
-                'other';
 
-              const usage: LanguageModelV2Usage = {
-                inputTokens: value.usage.promptTokens || value.usage.inputTokens || 0,
-                outputTokens: value.usage.completionTokens || value.usage.outputTokens || 0,
-                totalTokens: value.usage.totalTokens || undefined
-              };
-
-              controller.enqueue({
-                type: 'finish',
-                finishReason,
-                usage
-              });
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+              processLine(line);
             }
           }
+          if (buffer.trim()) {
+            processLine(buffer);
+          }
+
+          if (textStarted) {
+            controller.enqueue({ type: "text-end", id: textId });
+          }
+          controller.enqueue({ type: "finish", finishReason, usage });
+        } catch (error) {
+          controller.enqueue({ type: "error", error });
         } finally {
           reader.releaseLock();
           controller.close();
         }
-      }
+      },
     });
 
-    const providerMetadata: SharedV2ProviderMetadata = {
-      ollama: {
-        id: `ollama-stream-${this.modelId}-${Date.now()}`,
-        timestamp: new Date().toISOString()
-      }
-    };
-
     return {
-      stream: v2Stream,
-      providerMetadata
+      stream,
+      request: { body },
     };
   }
 }
 
 /**
- * V2-compliant Embedding Model adapter for Ollama
+ * V4-compliant Embedding Model for Ollama
  */
-class OllamaEmbeddingModelV2<VALUE> implements EmbeddingModelV2<VALUE> {
-  readonly specificationVersion = "v2" as const;
-  readonly provider: string;
+class OllamaEmbeddingModel implements EmbeddingModelV4 {
+  readonly specificationVersion = "v4" as const;
+  readonly provider = "ollama";
   readonly modelId: string;
-  readonly maxEmbeddingsPerCall: number;
-  readonly supportsParallelCalls: boolean;
+  readonly maxEmbeddingsPerCall = 2048;
+  readonly supportsParallelCalls = true;
 
-  private v1Model: any;
+  private context: OllamaRequestContext;
 
-  constructor(v1Model: any, provider: string, modelId: string) {
-    this.v1Model = v1Model;
-    this.provider = provider;
+  constructor(modelId: string, context: OllamaRequestContext) {
     this.modelId = modelId;
-    this.maxEmbeddingsPerCall = v1Model.maxEmbeddingsPerCall || 1;
-    this.supportsParallelCalls = v1Model.supportsParallelCalls || false;
+    this.context = context;
   }
 
-  async doEmbed(options: { values: VALUE[] }) {
-    // Call V1 model
-    const v1Result = await this.v1Model.doEmbed(options);
+  async doEmbed(options: EmbeddingModelV4CallOptions) {
+    const response = await postToOllama(
+      this.context,
+      "/embed",
+      { model: this.modelId, input: options.values },
+      options.headers,
+      options.abortSignal
+    );
+    const result = (await response.json()) as OllamaEmbedResponse;
 
-    // Convert V1 result to V2 format
+    if (result.error) {
+      throw new Error(`Ollama error: ${result.error}`);
+    }
+
     return {
-      embeddings: v1Result.embeddings,
+      embeddings: result.embeddings,
       usage: {
-        tokens: v1Result.usage?.tokens || 0
-      }
+        tokens: result.prompt_eval_count ?? 0,
+      },
+      warnings: [],
     };
   }
 }
 
 /**
- * V2-compliant Ollama Provider
+ * Ollama Provider (V4 spec, native for ai@7.x)
  */
 export interface OllamaV2ProviderOptions {
   baseURL?: string;
@@ -218,35 +586,36 @@ export interface OllamaV2ProviderOptions {
 }
 
 export class OllamaV2Provider {
-  private provider: OllamaProvider;
+  private context: OllamaRequestContext;
 
   constructor(options: OllamaV2ProviderOptions = {}) {
-    this.provider = createOllama({
-      baseURL: options.baseURL,
-      fetch: options.fetch,
-    });
+    this.context = {
+      baseURL: normalizeBaseURL(options.baseURL),
+      headers: options.headers ?? {},
+      fetch: options.fetch ?? globalThis.fetch,
+    };
   }
 
   /**
-   * Get V2-compliant language model
+   * Get language model
    */
-  languageModel(modelId: string): LanguageModelV2 {
-    const v1Model = this.provider(modelId);
-    return new OllamaLanguageModelV2(v1Model, 'ollama', modelId);
+  languageModel(modelId: string): LanguageModelV4 {
+    return new OllamaLanguageModel(modelId, this.context);
   }
 
   /**
-   * Get V2-compliant embedding model
+   * Get embedding model
    */
-  embeddingModel<VALUE = string>(modelId: string): EmbeddingModelV2<VALUE> {
-    const v1Model = this.provider.embedding(modelId);
-    return new OllamaEmbeddingModelV2<VALUE>(v1Model, 'ollama', modelId);
+  embeddingModel(modelId: string): EmbeddingModelV4 {
+    return new OllamaEmbeddingModel(modelId, this.context);
   }
 }
 
 /**
- * Create a V2-compliant Ollama provider
+ * Create an Ollama provider
  */
-export function createOllamaV2(options: OllamaV2ProviderOptions = {}): OllamaV2Provider {
+export function createOllamaV2(
+  options: OllamaV2ProviderOptions = {}
+): OllamaV2Provider {
   return new OllamaV2Provider(options);
 }

@@ -106,7 +106,6 @@ describe("OllamaProvider", () => {
     // Test that the provider stores the configuration
     expect(provider).toBeDefined();
     expect(provider).toBeInstanceOf(OllamaProvider);
-    console.dir(provider, { depth: null });
     // Verify class methods are available - safer approach for CI
     expect(provider.generateEmbedding).toBeDefined();
     expect(typeof provider.generateEmbedding).toBe("function");

@@ -8,7 +8,7 @@
         "@valibot/to-json-schema": "^1.7.1",
         "effect": "^3.21.4",
         "modality-kit": "^0.17.12",
-        "sury": "^11.0.0-alpha.9",
+        "sury": "^10.0.4",
         "xsschema": "0.5.0-beta.6",
         "zod-to-json-schema": "^3.25.2",
       },
@@ -43,7 +43,7 @@
 
     "pure-rand": ["pure-rand@6.1.0", "", {}, "sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA=="],
 
-    "sury": ["sury@11.0.0-alpha.9", "", { "peerDependencies": { "rescript": "12.x" }, "optionalPeers": ["rescript"] }, "sha512-hyJuZsILflnsUC/PMQya+VJYHMlfrIOtpQyYrKdVHxF+4iNxgwynQkUQyVMuIXL4SnHDrYmPRnH5ZqEkwKj4bA=="],
+    "sury": ["sury@10.0.4", "", { "peerDependencies": { "rescript": "11.x" }, "optionalPeers": ["rescript"] }, "sha512-dWKqOv+6D4AwGCjeKyaWr157RVBtvnPUp1I6RxReYD1dYuBl4k6oUd/t5INh1mBhUuAEC9SP+rZmIunCyNjXzQ=="],
 
     "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

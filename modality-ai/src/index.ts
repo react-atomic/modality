@@ -9,5 +9,6 @@ export {
   createStdioClient,
 } from "./setupStdioToHttpTools";
 export type { ModalityClientInstance } from "./ModalityClient";
+export type { ModelMessage } from "ai";
 export type { StdioClientOptions } from "./setupStdioToHttpTools";
 export { CLIBrowserOAuthProvider } from "./mcp-oauth-provider";

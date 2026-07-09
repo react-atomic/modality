@@ -1,9 +1,9 @@
 {
-  "version": "1.3.14",
+  "version": "1.3.14-0",
   "name": "modality-bun-kit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/react-atomic/modality"
+    "url": "git+https://github.com/react-atomic/modality.git"
   },
   "homepage": "https://github.com/react-atomic/modality/tree/main/modality-bun-kit",
   "description": "TODO: description",
@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "@types/bun": "^1.3.14",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "zod": "^4.4.3"
   },
   "exports": {
@@ -34,5 +34,9 @@
     "test": "npm run build && bun test",
     "prepublishOnly": "npm t"
   },
-  "files": ["package.json", "README.md", "dist"]
+  "files": [
+    "package.json",
+    "README.md",
+    "dist"
+  ]
 }
