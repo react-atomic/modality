@@ -30,4 +30,28 @@ describe("bunMockModule", () => {
       expect((e as Error).message).toMatch(/Invalid mock factory/);
     }
   });
+
+  // --- Graceful fallback tests (new behavior) ---
+  // When the original module has deep transitive dependencies that can't be resolved
+  // (e.g. vscode, modality-kit side-effect imports), bunMockModule should catch the
+  // import failure and apply the mock without throwing.
+  //
+  // Each test uses a unique bare module specifier (no ./ prefix) to avoid Bun's
+  // mock.module() write-once behavior — once a mock is set for a given specifier,
+  // subsequent mock.module() calls for the same specifier are silently ignored.
+  // Bare specifiers trigger Bun's module resolution which fails gracefully at
+  // runtime (unlike relative paths which Bun validates at compile time).
+
+  test("should not throw when original module cannot be imported (graceful fallback)", async () => {
+    await expect(
+      bunMockModule("__graceful_no_throw__", () => ({ value: 1 }), __dirname),
+    ).resolves.toEqual(expect.any(Function));
+  });
+
+  test("should apply mock when original module cannot be imported", async () => {
+    const path = "__graceful_mock_applied__";
+    await bunMockModule(path, () => ({ value: 1 }), __dirname);
+    const mod: any = await import(path);
+    expect(mod.value).toBe(1);
+  });
 });

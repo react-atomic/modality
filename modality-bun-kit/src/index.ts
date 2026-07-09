@@ -1,7 +1,7 @@
 /**
  * For test tool
  */
-export { bunMockModule } from "./util_tests/bunMockModule";
+export { bunMockModule, clearAllMocks } from "./util_tests/bunMockModule";
 export { TimerMockManager } from "./util_tests/TimerMockManager";
 export {
   ConsoleMock,
