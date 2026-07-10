@@ -173,7 +173,7 @@ export class OllamaProvider implements AIProviderInterface {
         toolCalls: result.toolCalls,
         toolResults: result.toolResults,
         steps: (result as any).steps, // Include steps for multi-step processing
-        messageId: result.response?.id || undefined, // Extract message ID from AI SDK response.id
+        messageId: result.finalStep?.response?.id || undefined, // Extract message ID from AI SDK finalStep.response.id
       };
     } catch (error) {
       throw new Error(
@@ -187,8 +187,8 @@ export class OllamaProvider implements AIProviderInterface {
  * Gemini AI Provider Implementation
  */
 const GeminiDefaultModels = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
+  "gemini-3-flash",
+  "gemini-3.1-flash-lite",
   "gemini-flash-latest",
 //  "gemini-2.0-flash",
 //  "gemini-2.0-flash-lite",
@@ -276,7 +276,7 @@ export class GeminiProvider implements AIProviderInterface {
         toolCalls: result.toolCalls,
         toolResults: result.toolResults,
         steps: (result as any).steps, // Include steps for multi-step processing
-        messageId: result.response?.id || undefined, // Extract message ID from AI SDK response.id
+        messageId: result.finalStep?.response?.id || undefined, // Extract message ID from AI SDK finalStep.response.id
       };
     } catch (error) {
       throw new Error(
@@ -357,7 +357,7 @@ export class VsCodeProvider implements AIProviderInterface {
         toolCalls: result.toolCalls,
         toolResults: result.toolResults,
         steps: (result as any).steps, // Include steps for multi-step processing
-        messageId: result.response?.id || undefined, // Extract message ID from AI SDK response.id
+        messageId: result.finalStep?.response?.id || undefined, // Extract message ID from AI SDK finalStep.response.id
       };
     } catch (error) {
       throw new Error(
@@ -642,7 +642,7 @@ interface callGenerateTextProps {
 }
 
 /**
- * AI SDK v7 standard: system instructions are a separate `system` parameter,
+ * AI SDK v7 standard: system instructions are a separate `instructions` parameter,
  * not embedded in the messages array. Google Gemini rejects system messages in `contents`.
  */
 export function extractSystemMessage(
@@ -665,7 +665,7 @@ async function callGenerateText({
 
   const result = await generateText({
     model,
-    system,
+    instructions: system,
     messages: contentMessages,
     temperature: options?.temperature,
     maxOutputTokens: options?.maxOutputTokens,
