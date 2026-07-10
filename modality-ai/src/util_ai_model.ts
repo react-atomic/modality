@@ -13,6 +13,7 @@ import { VsCodeLmProvider } from "./provider/VsCodeLmProvider";
  */
 import type { ModelMessage } from "ai";
 import type { AITools } from "modality-mcp-kit";
+import { GeminiDefaultModels } from "./const";
 import type {
   OllamaConfig,
   GeminiConfig,
@@ -186,13 +187,6 @@ export class OllamaProvider implements AIProviderInterface {
 /**
  * Gemini AI Provider Implementation
  */
-const GeminiDefaultModels = [
-  "gemini-3-flash",
-  "gemini-3.1-flash-lite",
-  "gemini-flash-latest",
-//  "gemini-2.0-flash",
-//  "gemini-2.0-flash-lite",
-];
 export class GeminiProvider implements AIProviderInterface {
   private config: GeminiConfig;
   private model: string = "";

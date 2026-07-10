@@ -15,6 +15,7 @@ import type { AITool } from "modality-mcp-kit";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { test, describe, expect, beforeEach, afterEach } from "bun:test";
+import { bunMockModule } from "modality-bun-kit";
 
 // Helper functions for testing (replacing the migration utilities)
 function createChatMessage(
@@ -24,23 +25,26 @@ function createChatMessage(
   return { role, content };
 }
 
-// Mock functions with restore capability
-let mockRestore: (() => void) | undefined;
-
-beforeEach(async () => {
-  // Note: bunMockModule cannot work here because modules are already imported at the top.
-  // Bun's mock() must be called before import, not at runtime.
-  // Tests will use real OllamaProvider/GeminiProvider classes instead.
-  mockRestore = undefined;
-});
-
-afterEach(() => {
-  // Restore mock module after each test
-  if (mockRestore) {
-    mockRestore();
-    mockRestore = undefined;
-  }
-});
+// Mock the AI SDK (`ai`) so provider/chat/embedding error paths run fully
+// offline (no network round-trip, no timeout). Every network-invoking
+// assertion in this file expects a rejection, which the mocked `embed` /
+// `generateText` provide. Uses bunMockModule for automatic store/restore.
+async function mockAiSdk(): Promise<(() => void) | undefined> {
+  return bunMockModule(
+    "ai",
+    () => ({
+      embed: () =>
+        Promise.reject(new Error("Mocked ai.embed failure (offline test)")),
+      generateText: () =>
+        Promise.reject(
+          new Error("Mocked ai.generateText failure (offline test)")
+        ),
+      tool: (definition: unknown) => definition,
+      stepCountIs: (count: number) => count,
+    }),
+    import.meta.dir
+  );
+}
 
 // Simple test without complex mocking - focusing on class behavior and error handling
 describe("OllamaConfig", () => {
@@ -82,13 +86,20 @@ describe("OllamaConfig", () => {
 describe("OllamaProvider", () => {
   let config: OllamaConfig;
   let provider: OllamaProvider;
+  let resetMock: (() => void) | undefined;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     config = {
       baseURL: "http://localhost:11434",
       model: "nomic-embed-text",
     };
     provider = new OllamaProvider(config);
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
   });
 
   test("should create provider with valid config", () => {
@@ -120,23 +131,34 @@ describe("OllamaProvider", () => {
     expect(provider.generateEmbedding).toBeDefined();
     expect(typeof provider.generateEmbedding).toBe("function");
 
-    // Test with invalid config that will definitely fail
     const invalidProvider = new OllamaProvider({
       baseURL: "http://nonexistent-host:9999",
       model: "invalid-model",
     });
 
+    // Rejects via the mocked AI SDK (no network needed)
     expect(invalidProvider.generateEmbedding(text)).rejects.toThrow();
   });
 
   test("should handle chat generation errors gracefully", async () => {
     const messages: ModelMessage[] = [createChatMessage("user", "Hello!")];
-    // Provider will fail due to missing Ollama server, but error handling should work
+    // Rejects via the mocked AI SDK (no network needed)
     expect(provider.chat(messages)).rejects.toThrow();
   });
 });
 
 describe("generateEmbedding standalone function", () => {
+  let resetMock: (() => void) | undefined;
+
+  beforeEach(async () => {
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
+  });
+
   test("should be a function", () => {
     expect(typeof generateEmbedding).toBe("function");
   });
@@ -147,17 +169,28 @@ describe("generateEmbedding standalone function", () => {
 
   test("should handle errors gracefully", async () => {
     const text = "Test text";
-    // Use invalid config to ensure error
     const invalidConfig: OllamaConfig = {
       baseURL: "http://nonexistent-host:9999",
       model: "invalid-model",
     };
 
+    // Rejects via the mocked AI SDK (no network needed)
     expect(generateEmbedding(text, invalidConfig)).rejects.toThrow();
   });
 });
 
 describe("Error handling", () => {
+  let resetMock: (() => void) | undefined;
+
+  beforeEach(async () => {
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
+  });
+
   test("should handle network errors gracefully", async () => {
     const config: OllamaConfig = {
       baseURL: "http://nonexistent-host:9999",
@@ -170,6 +203,7 @@ describe("Error handling", () => {
     expect(provider.generateEmbedding).toBeDefined();
     expect(typeof provider.generateEmbedding).toBe("function");
 
+    // Rejects via the mocked AI SDK (no network needed)
     expect(provider.generateEmbedding("test")).rejects.toThrow();
   });
 
@@ -327,13 +361,21 @@ describe("ChatOptions Interface", () => {
 describe("GeminiProvider", () => {
   let config: GeminiConfig;
   let provider: GeminiProvider;
+  let resetMock: (() => void) | undefined;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     config = {
       apiKey: "test-api-key",
       model: "gemini-1.5-flash",
     };
     provider = new GeminiProvider(config);
+    // Mock the AI SDK so provider error paths run offline (no network / no timeout).
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
   });
 
   test("should create provider with valid config", () => {
@@ -353,12 +395,13 @@ describe("GeminiProvider", () => {
       model: "invalid-model",
     });
 
+    // Rejects via the mocked AI SDK (no network needed)
     expect(invalidProvider.generateEmbedding(text)).rejects.toThrow();
   });
 
   test("should handle chat generation error gracefully", async () => {
     const messages: ModelMessage[] = [createChatMessage("user", "Hello!")];
-    // Provider will fail due to missing Gemini API key, but error handling should work
+    // Rejects via the mocked AI SDK (no network needed)
     expect(provider.chat(messages)).rejects.toThrow();
   });
 });
@@ -366,18 +409,25 @@ describe("GeminiProvider", () => {
 describe("OllamaProvider Chat Functionality", () => {
   let config: OllamaConfig;
   let provider: OllamaProvider;
+  let resetMock: (() => void) | undefined;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     config = {
       baseURL: "http://localhost:11434",
       model: "llama3.2",
     };
     provider = new OllamaProvider(config);
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
   });
 
   test("should handle chat generation error gracefully", async () => {
     const messages: ModelMessage[] = [createChatMessage("user", "Hello!")];
-    // Provider will fail due to missing Ollama server, but error handling should work
+    // Rejects via the mocked AI SDK (no network needed)
     expect(provider.chat(messages)).rejects.toThrow();
   });
 
@@ -393,12 +443,23 @@ describe("OllamaProvider Chat Functionality", () => {
       topP: 0.8,
     };
 
-    // Provider will fail due to missing Ollama server, but error handling should work
+    // Rejects via the mocked AI SDK (no network needed)
     expect(provider.chat(messages, options)).rejects.toThrow();
   });
 });
 
 describe("AIChat", () => {
+  let resetMock: (() => void) | undefined;
+
+  beforeEach(async () => {
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
+  });
+
   test("should create instance with Ollama config", () => {
     const config: AIConfig = {
       provider: "ollama",
@@ -469,7 +530,7 @@ describe("AIChat", () => {
     const aiChat = new AIChat(config);
     const messages: ModelMessage[] = [createChatMessage("user", "Hello!")];
 
-    // All operations should fail gracefully due to mocking
+    // All operations reject via the mocked AI SDK (no network needed)
     expect(aiChat.generateEmbedding("test text")).rejects.toThrow();
     expect(aiChat.chat(messages)).rejects.toThrow();
   });
@@ -508,6 +569,17 @@ describe("Factory Functions", () => {
 // ========================================
 
 describe("Tool Support", () => {
+  let resetMock: (() => void) | undefined;
+
+  beforeEach(async () => {
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
+  });
+
   test("should handle AITool interface correctly", () => {
     const mockTool: AITool = {
       description: "Test tool description",
@@ -559,7 +631,7 @@ describe("Tool Support", () => {
       toolChoice: "auto",
     };
 
-    // Both should fail gracefully due to mocking
+    // Both reject via the mocked AI SDK (no network needed)
     expect(ollamaProvider.chat(messages, options)).rejects.toThrow();
     expect(geminiProvider.chat(messages, options)).rejects.toThrow();
   });
@@ -570,6 +642,17 @@ describe("Tool Support", () => {
 // ========================================
 
 describe("Edge Cases and Boundaries", () => {
+  let resetMock: (() => void) | undefined;
+
+  beforeEach(async () => {
+    resetMock = await mockAiSdk();
+  });
+
+  afterEach(() => {
+    resetMock?.();
+    resetMock = undefined;
+  });
+
   test("should handle extreme configuration values", () => {
     // Test extreme but valid configurations
     const extremeConfigs = [
@@ -603,7 +686,7 @@ describe("Edge Cases and Boundaries", () => {
       ], // Mixed conversation
     ];
 
-    // All should fail gracefully due to mocking
+    // All reject via the mocked AI SDK (no network needed)
     for (const messages of messagePatterns) {
       expect(aiChat.chat(messages)).rejects.toThrow();
     }
