@@ -641,15 +641,32 @@ interface callGenerateTextProps {
   tools: Record<string, any>;
 }
 
+/**
+ * AI SDK v7 standard: system instructions are a separate `system` parameter,
+ * not embedded in the messages array. Google Gemini rejects system messages in `contents`.
+ */
+export function extractSystemMessage(
+  messages: ModelMessage[]
+): { system: string | undefined; contentMessages: ModelMessage[] } {
+  const systemMsg = messages.find((m) => m.role === "system");
+  return {
+    system: systemMsg?.content,
+    contentMessages: messages.filter((m) => m.role !== "system"),
+  };
+}
+
 async function callGenerateText({
   model,
   messages,
   options,
   tools,
 }: callGenerateTextProps) {
+  const { system, contentMessages } = extractSystemMessage(messages);
+
   const result = await generateText({
     model,
-    messages,
+    system,
+    messages: contentMessages,
     temperature: options?.temperature,
     maxOutputTokens: options?.maxOutputTokens,
     topP: options?.topP,

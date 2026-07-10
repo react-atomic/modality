@@ -8,6 +8,7 @@ import {
   createAIChat,
   createOllamaChat,
   createGeminiChat,
+  extractSystemMessage,
 } from "../util_ai_model";
 import type { OllamaConfig, GeminiConfig } from "../schemas/schemas_modality";
 import type { AITool } from "modality-mcp-kit";
@@ -606,5 +607,150 @@ describe("Edge Cases and Boundaries", () => {
     for (const messages of messagePatterns) {
       expect(aiChat.chat(messages)).rejects.toThrow();
     }
+  });
+});
+
+// ========================================
+// EXTRACT SYSTEM MESSAGE TESTS
+// ========================================
+
+describe("extractSystemMessage", () => {
+  test("should extract system message when it is first in the array", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "You are a helpful assistant." },
+      { role: "user", content: "Hello!" },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBe("You are a helpful assistant.");
+    expect(result.contentMessages).toHaveLength(1);
+    expect(result.contentMessages[0].role).toBe("user");
+  });
+
+  test("should return undefined system when no system message exists", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "Hello!" },
+      { role: "assistant", content: "Hi there!" },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBeUndefined();
+    expect(result.contentMessages).toHaveLength(2);
+  });
+
+  test("should extract only the first system message when multiple exist", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "First instruction." },
+      { role: "system", content: "Second instruction." },
+      { role: "user", content: "Hello!" },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBe("First instruction.");
+    // All system messages are filtered out, leaving only user messages
+    expect(result.contentMessages).toHaveLength(1);
+    expect(result.contentMessages[0].role).toBe("user");
+  });
+
+  test("should extract system message regardless of its position", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "Hello!" },
+      { role: "assistant", content: "Hi!" },
+      { role: "system", content: "Be concise." },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBe("Be concise.");
+    expect(result.contentMessages).toHaveLength(2);
+    expect(result.contentMessages[0].role).toBe("user");
+    expect(result.contentMessages[1].role).toBe("assistant");
+  });
+
+  test("should handle empty messages array", () => {
+    const messages: ModelMessage[] = [];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBeUndefined();
+    expect(result.contentMessages).toEqual([]);
+  });
+
+  test("should handle system message with empty content", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "" },
+      { role: "user", content: "Hello!" },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBe("");
+    expect(result.contentMessages).toHaveLength(1);
+    expect(result.contentMessages[0].role).toBe("user");
+  });
+
+  test("should handle messages without any system role", () => {
+    const messages: ModelMessage[] = [
+      { role: "assistant", content: "Hello! How can I help?" },
+      { role: "user", content: "Tell me a joke." },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBeUndefined();
+    expect(result.contentMessages).toHaveLength(2);
+  });
+
+  test("should preserve tool result messages when system is extracted", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "You have tools available." },
+      { role: "user", content: "Check weather." },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            result: "Sunny",
+          },
+        ] as any,
+      } as ModelMessage,
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBe("You have tools available.");
+    expect(result.contentMessages).toHaveLength(2);
+    expect(result.contentMessages[0].role).toBe("user");
+    expect(result.contentMessages[1].role).toBe("tool");
+  });
+
+  test("should preserve complex multi-turn conversation structure", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "You are a math tutor." },
+      { role: "user", content: "What is 2+2?" },
+      { role: "assistant", content: "4" },
+      { role: "user", content: "What is 3+3?" },
+    ];
+
+    const result = extractSystemMessage(messages);
+
+    expect(result.system).toBe("You are a math tutor.");
+    expect(result.contentMessages).toHaveLength(3);
+    expect(result.contentMessages[0]).toEqual({
+      role: "user",
+      content: "What is 2+2?",
+    });
+    expect(result.contentMessages[1]).toEqual({
+      role: "assistant",
+      content: "4",
+    });
+    expect(result.contentMessages[2]).toEqual({
+      role: "user",
+      content: "What is 3+3?",
+    });
   });
 });
