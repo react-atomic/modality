@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { BaseLogger, type LoggerOptions, type LogLevel } from "../logger_core";
+import { BaseLogger, type LoggerOptions, type LogLevel } from "../BaseLogger";
 
 interface CapturedEntry {
   level: string;

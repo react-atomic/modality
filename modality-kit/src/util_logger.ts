@@ -2,8 +2,8 @@
  * Storage Logger for structured logging
  * Provides consistent logging across storage operations with configurable levels
  */
-import { BaseLogger } from "./logger_core";
-import type { LogLevel, LoggerOptions } from "./logger_core";
+import { BaseLogger } from "./BaseLogger";
+import type { LogLevel, LoggerOptions } from "./BaseLogger";
 
 export class ModalityLogger extends BaseLogger {
   public static getInstance(
