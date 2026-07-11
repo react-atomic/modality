@@ -276,17 +276,60 @@ class ModalityClientImpl {
     }
   }
 
+  /**
+   * Parse a CallToolResult into a plain value.
+   *
+   * modality-kit's `formatSuccessResponse(data, meta)` splits results across
+   * text blocks — block 0 is the envelope (`{message}`), blocks 1+ carry the
+   * payload — so ALL text blocks are parsed and object blocks shallow-merged
+   * (later blocks win on key collisions). Non-object blocks (e.g. the
+   * `DEBUG=1` "Response size" note) are collected under `_extra` (or
+   * `__extra` when the tool's payload already carries `_extra`).
+   *
+   * The merged object always carries `success`: derived from the MCP-level
+   * `isError` flag unless the tool set it explicitly.
+   */
   public parseContent(toolResult: any): unknown {
-    try {
-      const content = toolResult?.content?.[0];
-      if (content?.type === "text" && content.text) {
-        return JSON.parse(content.text);
-      }
-      return content ?? toolResult;
-    } catch {
-      const content = toolResult?.content?.[0];
-      return content?.text ?? content ?? toolResult;
+    const blocks: any[] = Array.isArray(toolResult?.content)
+      ? toolResult.content
+      : [];
+    const parsed = blocks
+      .filter((b) => b?.type === "text" && b.text)
+      .map((b) => {
+        try {
+          return JSON.parse(b.text);
+        } catch {
+          return b.text; // plain-text block (e.g. DEBUG response-size note)
+        }
+      });
+
+    if (parsed.length === 0) {
+      return toolResult?.content?.[0] ?? toolResult;
     }
+
+    const objects = parsed.filter(
+      (p) => typeof p === "object" && p !== null && !Array.isArray(p)
+    );
+    const extras = parsed.filter(
+      (p) => typeof p !== "object" || p === null || Array.isArray(p)
+    );
+
+    // No object blocks (plain string / array results) — legacy passthrough.
+    if (objects.length === 0) {
+      return parsed.length === 1 ? parsed[0] : parsed;
+    }
+
+    const merged: Record<string, unknown> = Object.assign({}, ...objects);
+    if (extras.length > 0) {
+      // Avoid collision: if a tool payload already carries _extra, shift
+      // the accumulated non-object blocks to __extra.
+      const key = objects.some((o) => "_extra" in o) ? "__extra" : "_extra";
+      merged[key] = extras.length === 1 ? extras[0] : extras;
+    }
+    if (merged.success === undefined) {
+      merged.success = toolResult?.isError !== true;
+    }
+    return merged;
   }
 }
 
