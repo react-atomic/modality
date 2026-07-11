@@ -1,5 +1,7 @@
 export { formatErrorResponse, formatSuccessResponse, mergeResponsesContent } from "./util_response";
 export { getLoggerInstance, type ModalityLogger } from "./util_logger";
+export { BaseLogger } from "./logger_core";
+export type { LogLevel, LoggerOptions, LevelMap } from "./logger_core";
 export { withErrorHandling } from "./util_error";
 export { ErrorCode } from "./ErrorCode";
 
