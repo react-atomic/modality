@@ -4,4 +4,5 @@
 export * from "./help";
 
 // Reusable test suite: enforce the one-export-per-command-module rule.
-export * from "./command-export-validation";
+export { setupCommandExportValidation, isCommandFile } from "./command-export-validation";
+export type { CommandExportValidationOptions } from "./command-export-validation";

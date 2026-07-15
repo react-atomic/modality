@@ -1,9 +1,47 @@
 import { describe, test, expect } from "bun:test";
-import { setupCommandExportValidation } from "../command-export-validation";
+import { type Dirent } from "node:fs";
+import {
+  setupCommandExportValidation,
+  isCommandFile,
+} from "../command-export-validation";
 
-// Self-test against the fixtures: foo.ts passes the one-export rule and
-// types.ts (multi-export infrastructure) is excluded by default.
+// Self-test against the fixtures: foo.ts and index.ts pass the one-export rule;
+// .d.ts, .test.ts, and .spec.ts files are excluded from validation.
 setupCommandExportValidation(import.meta.dir + "/fixtures/commands");
+
+// ── isCommandFile (pure predicate) ──────────────────────────────────────────
+
+function dirent(name: string, isFile = true): Dirent {
+  return { name, isFile: () => isFile } as Dirent;
+}
+
+describe("isCommandFile", () => {
+  test("includes regular .ts command files", () => {
+    expect(isCommandFile(dirent("foo.ts"))).toBe(true);
+  });
+
+  test("excludes .d.ts declaration files", () => {
+    expect(isCommandFile(dirent("types.d.ts"))).toBe(false);
+  });
+
+  test("excludes .test.ts test files", () => {
+    expect(isCommandFile(dirent("foo.test.ts"))).toBe(false);
+  });
+
+  test("excludes .spec.ts spec files", () => {
+    expect(isCommandFile(dirent("foo.spec.ts"))).toBe(false);
+  });
+
+  test("excludes non-.ts files", () => {
+    expect(isCommandFile(dirent("readme.md"))).toBe(false);
+  });
+
+  test("excludes directories", () => {
+    expect(isCommandFile(dirent("subdir", false))).toBe(false);
+  });
+});
+
+// ── setupCommandExportValidation guards ─────────────────────────────────────
 
 describe("setupCommandExportValidation guards", () => {
   test("throws on missing directory", () => {
