@@ -12,7 +12,12 @@ import { existsSync, readdirSync, type Dirent } from "node:fs";
 import { join, isAbsolute } from "node:path";
 
 export interface CommandExportValidationOptions {
-  /** Required suffix of the single exported key. Default: "Command" */
+  /**
+   * Required suffix of the only exported key. Default: "Command"
+   *
+   * e.g. with the default, `direction.ts` must export exactly one key named
+   * `directionCommand` — `directionHandler` would fail this check.
+   */
   exportSuffix?: string;
 }
 
