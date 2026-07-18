@@ -99,7 +99,7 @@ export interface HelpConfig {
   globalExamples?: string[];
   /** Footer text (e.g. "Set NO_COLOR=1 to disable colors") */
   footer?: string;
-  /** Minimum column width for command name (default: 16) */
+  /** Command-name column width. Default: auto — longest command name + 2, min 16. */
   colNameWidth?: number;
   /** Flag column width in compact mode (default: 22) */
   flagWidthCompact?: number;

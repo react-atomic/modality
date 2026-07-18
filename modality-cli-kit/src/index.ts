@@ -6,3 +6,7 @@ export * from "./help";
 // Reusable test suite: enforce the one-export-per-command-module rule.
 export { setupCommandExportValidation, isCommandFile } from "./command-export-validation";
 export type { CommandExportValidationOptions } from "./command-export-validation";
+
+// ── CLI Output Types ────────────────────────────────────────────────────────
+// Shared output format types (JSON, human, JSONL) for CLI commands.
+export * from "./output";

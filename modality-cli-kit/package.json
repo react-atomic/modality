@@ -1,5 +1,5 @@
 {
-  "version": "0.2.4",
+  "version": "0.3.0",
   "name": "modality-cli-kit",
   "repository": {
     "type": "git",
@@ -12,7 +12,7 @@
   "license": "ISC",
   "git.addAICoAuthor": "off",
   "dependencies": {
-    "modality-mcp-kit": "^1.7.1",
+    "modality-mcp-kit": "^2.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

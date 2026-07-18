@@ -59,7 +59,8 @@ export function wrapText(
     .split("\n")
     .map((paragraph) => {
       if (paragraph.length <= maxWidth) return paragraph;
-      const words = paragraph.split(" ");
+      const words = paragraph.split(" ").filter((w) => w.length > 0);
+      if (words.length === 0) return paragraph;
       const lines: string[] = [];
       let current = "";
       for (const word of words) {

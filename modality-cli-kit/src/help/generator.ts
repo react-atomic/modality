@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import * as c from "./colors";
-import { padName, padVisible, flagPad, Lines } from "./formatter";
+import { padName, padVisible, flagPad, Lines, DEFAULT_COL_NAME_WIDTH } from "./formatter";
 import { schemaToCliOptions, buildKeyMap } from "./zod-cli";
 import { optionFlags } from "./validator";
 import type { CLICommand, HelpConfig, Option } from "./types";
@@ -79,7 +79,7 @@ function renderOption(opt: Option, compact: boolean): string {
  */
 export function renderCLICommand(
   cmd: CLICommand,
-  colNameWidth: number = 16,
+  colNameWidth: number = DEFAULT_COL_NAME_WIDTH,
   compact: boolean = true,
 ): string {
   const nameCol = c.cmd(padName(cmd.name ?? "", colNameWidth));
@@ -132,13 +132,22 @@ export function generateHelp(config: HelpConfig): string {
     globalOptions,
     globalExamples,
     footer,
-    colNameWidth = 16,
+    colNameWidth,
   } = config;
 
   const sorted = config.sorted !== false;
   const cmds = sorted
     ? [...commands].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
     : commands;
+
+  // Auto-size the name column to the longest command name (+2 gap) so long
+  // names never collide with their summary; explicit colNameWidth wins.
+  const nameWidth =
+    colNameWidth ??
+    Math.max(
+      DEFAULT_COL_NAME_WIDTH,
+      ...cmds.map((cmd) => (cmd.name ?? "").length + 2),
+    );
 
   const out = new Lines();
 
@@ -151,7 +160,7 @@ export function generateHelp(config: HelpConfig): string {
 
   out.push(`${c.header("Commands:")}`);
   for (const cmd of cmds) {
-    out.push(renderCLICommand(cmd, colNameWidth, true));
+    out.push(renderCLICommand(cmd, nameWidth, true));
   }
 
   if (globalOptions && globalOptions.length > 0) {
@@ -231,7 +240,7 @@ export function generateCommandHelp(
   if (positionals.length > 0) {
     out.push(`${c.header("Arguments:")}`);
     for (const pos of positionals) {
-      out.push(renderPositional(pos, "  "));
+      out.push(renderPositional(pos, "    "));
     }
     out.push("");
   }
@@ -290,7 +299,7 @@ export function generateCommandHelp(
 export function renderSection(
   heading: string,
   entries: { cmd: string; args?: string; desc: string }[],
-  colWidth: number = 16,
+  colWidth: number = DEFAULT_COL_NAME_WIDTH,
 ): string {
   const lines = new Lines();
   lines.push(`${c.header(heading)}`);
