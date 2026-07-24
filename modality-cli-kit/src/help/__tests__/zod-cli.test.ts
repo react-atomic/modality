@@ -9,6 +9,7 @@ import {
   toKebab,
   normalizeSchemaKeys,
   buildKeyMap,
+  createFlatCommandSchema,
 } from "../zod-cli";
 import type { Option, CLICommand } from "../types";
 import { makeCmd } from "./helpers";
@@ -702,5 +703,222 @@ describe("buildCLICommandValidator", () => {
     const validate = buildCLICommandValidator(commands);
     const { warnings } = validate("price", ["--timefram"]);
     expect(warnings.length).toBeGreaterThan(0);
+  });
+});
+
+// ── createFlatCommandSchema ─────────────────────────────────────────
+
+describe("createFlatCommandSchema", () => {
+  test("empty commands → command field is z.string, no extra fields", () => {
+    const schema = createFlatCommandSchema([]);
+    expect(schema.shape.command).toBeInstanceOf(z.ZodString);
+    expect(Object.keys(schema.shape)).toEqual(["command"]);
+  });
+
+  test("single command → command field is z.literal", () => {
+    const cmd = makeCmd({
+      name: "open",
+      summary: "Open URL",
+      inputSchema: z.object({ url: z.string().describe("Target URL") }),
+    });
+    const schema = createFlatCommandSchema([cmd]);
+    const cmdField = schema.shape.command!;
+    expect(cmdField).toBeInstanceOf(z.ZodLiteral);
+    expect(cmdField.parse("open")).toBe("open");
+    expect(() => cmdField.parse("other")).toThrow();
+  });
+
+  test("multiple commands → command field is z.enum", () => {
+    const cmd1 = makeCmd({
+      name: "foo",
+      summary: "Foo",
+      inputSchema: z.object({ x: z.string().optional() }),
+    });
+    const cmd2 = makeCmd({
+      name: "bar",
+      summary: "Bar",
+      inputSchema: z.object({ y: z.string().optional() }),
+    });
+    const schema = createFlatCommandSchema([cmd1, cmd2]);
+    expect(schema.shape.command).toBeInstanceOf(z.ZodEnum);
+    expect(schema.shape.command!.parse("foo")).toBe("foo");
+    expect(schema.shape.command!.parse("bar")).toBe("bar");
+    expect(() => schema.shape.command!.parse("baz")).toThrow();
+  });
+
+  test("all merged fields are optional regardless of original required-ness", () => {
+    const cmd = makeCmd({
+      name: "required-field",
+      summary: "Required",
+      inputSchema: z.object({ name: z.string() }), // required in its own schema
+    });
+    const schema = createFlatCommandSchema([cmd]);
+    const nameField = schema.shape.name as z.ZodTypeAny;
+    expect(nameField).toBeInstanceOf(z.ZodOptional);
+    // Should parse successfully with no name provided
+    expect(schema.parse({ command: "required-field" })).toEqual({ command: "required-field" });
+  });
+
+  test("already-optional fields are not double-wrapped", () => {
+    const cmd = makeCmd({
+      name: "opt",
+      summary: "Opt",
+      inputSchema: z.object({ tag: z.string().optional() }), // already optional
+    });
+    const schema = createFlatCommandSchema([cmd]);
+    const tagField = schema.shape.tag as z.ZodOptional<z.ZodString>;
+    // Should be ZodOptional<ZodString>, NOT ZodOptional<ZodOptional<ZodString>>
+    expect(tagField).toBeInstanceOf(z.ZodOptional);
+    expect(tagField._def.innerType).toBeInstanceOf(z.ZodString);
+  });
+
+  test("commands without ZodObject inputSchema are skipped gracefully", () => {
+    const withSchema = makeCmd({
+      name: "typed",
+      summary: "Typed",
+      inputSchema: z.object({ verbose: z.boolean().optional() }),
+    });
+    const noSchema = makeCmd({
+      name: "bare",
+      summary: "Bare",
+      // no inputSchema
+    });
+    const schema = createFlatCommandSchema([withSchema, noSchema]);
+    expect(schema.shape).toHaveProperty("verbose");
+    expect(schema.shape).toHaveProperty("command");
+    // bare command contributes no extra fields
+    expect(Object.keys(schema.shape).length).toBe(2); // command + verbose
+  });
+
+  test("same-named fields from different commands: last registration wins", () => {
+    const cmd1 = makeCmd({
+      name: "a",
+      summary: "A",
+      inputSchema: z.object({ shared: z.string().describe("From A") }),
+    });
+    const cmd2 = makeCmd({
+      name: "b",
+      summary: "B",
+      inputSchema: z.object({ shared: z.coerce.number().describe("From B") }),
+    });
+    const schema = createFlatCommandSchema([cmd1, cmd2]);
+    const sharedField = schema.shape.shared as z.ZodTypeAny;
+    // cmd2's z.coerce.number() should have overwritten cmd1's z.string
+    expect(sharedField.safeParse("42").success).toBe(true);
+    expect(sharedField.parse("42")).toBe(42);
+  });
+
+  test("command field has the expected description", () => {
+    const schema = createFlatCommandSchema([
+      makeCmd({ name: "x", summary: "X", inputSchema: z.object({}) }),
+    ]);
+    expect(schema.shape.command!.description).toBe("Which command in the bundle to run");
+  });
+
+  test("integration: parseCliArgs works end-to-end with a flattened schema", () => {
+    const cmd1 = makeCmd({
+      name: "serve",
+      summary: "Serve",
+      inputSchema: z.object({
+        port: z.coerce.number().optional().describe("Port"),
+        host: z.string().optional().describe("Host"),
+      }),
+    });
+    const cmd2 = makeCmd({
+      name: "build",
+      summary: "Build",
+      inputSchema: z.object({
+        outdir: z.string().optional().describe("Output dir"),
+      }),
+    });
+    const flat = createFlatCommandSchema([cmd1, cmd2]);
+    const { data, warnings } = parseCliArgs(flat, ["--command", "serve", "--port", "3000"]);
+    expect(data.command).toBe("serve");
+    expect(data.port).toBe(3000);
+    expect(warnings).toEqual([]);
+  });
+
+  test("positional command name works via parseCliArgs with positionalKeys", () => {
+    const cmd = makeCmd({
+      name: "deploy",
+      summary: "Deploy",
+      inputSchema: z.object({
+        target: z.string().optional().describe("Target env"),
+      }),
+    });
+    const flat = createFlatCommandSchema([cmd]);
+    const { data, warnings } = parseCliArgs(flat, ["deploy", "--target", "prod"], ["command"]);
+    expect(data.command).toBe("deploy");
+    expect(data.target).toBe("prod");
+    expect(warnings).toEqual([]);
+  });
+
+  test("commands with undefined name are filtered from enum", () => {
+    const named = makeCmd({
+      name: "real",
+      summary: "Real",
+      inputSchema: z.object({ a: z.string().optional() }),
+    });
+    const unnamed = makeCmd({
+      name: undefined as unknown as string,
+      summary: "Ghost",
+      inputSchema: z.object({ b: z.string().optional() }),
+    });
+    const schema = createFlatCommandSchema([named, unnamed]);
+    // unnamed command's inputSchema fields still merge (b is present)
+    expect(schema.shape).toHaveProperty("b");
+    // but only the named command appears in the enum
+    expect(schema.shape.command!.parse("real")).toBe("real");
+    expect(() => schema.shape.command!.parse("ghost")).toThrow();
+  });
+
+  test("command whose inputSchema contains a 'command' field does not shadow the bundle selector", () => {
+    const cmd = makeCmd({
+      name: "evil",
+      summary: "Evil",
+      inputSchema: z.object({
+        command: z.string().describe("user's evil field"),
+        payload: z.string().optional(),
+      }),
+    });
+    const schema = createFlatCommandSchema([cmd]);
+    // The bundle selector should be a z.literal("evil"), not z.string
+    expect(schema.shape.command).toBeInstanceOf(z.ZodLiteral);
+    expect(schema.shape.command!.parse("evil")).toBe("evil");
+    expect(() => schema.shape.command!.parse("anything")).toThrow();
+    // payload merged normally
+    expect(schema.shape).toHaveProperty("payload");
+  });
+
+  test("commands with non-ZodObject inputSchema (e.g. z.array) do not crash", () => {
+    const arraySchema = makeCmd({
+      name: "list",
+      summary: "List",
+      inputSchema: z.array(z.string()),
+    });
+    const objSchema = makeCmd({
+      name: "get",
+      summary: "Get",
+      inputSchema: z.object({ id: z.string().optional() }),
+    });
+    // Should not throw — array schema is skipped
+    const schema = createFlatCommandSchema([arraySchema, objSchema]);
+    expect(schema.shape).toHaveProperty("id");
+    expect(schema.shape.command).toBeInstanceOf(z.ZodEnum);
+  });
+
+  test("command with name but no inputSchema still appears in enum", () => {
+    const bare = makeCmd({ name: "noop", summary: "Noop" });
+    const schema = createFlatCommandSchema([bare]);
+    expect(schema.shape.command).toBeInstanceOf(z.ZodLiteral);
+    expect(schema.shape.command!.parse("noop")).toBe("noop");
+    // Only the command field exists
+    expect(Object.keys(schema.shape)).toEqual(["command"]);
+  });
+
+  test("single-command z.string accepts any value (no validation on command field)", () => {
+    const schema = createFlatCommandSchema([]);
+    expect(schema.parse({ command: "anything" })).toEqual({ command: "anything" });
+    expect(schema.parse({ command: "" })).toEqual({ command: "" });
   });
 });

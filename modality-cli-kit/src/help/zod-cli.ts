@@ -571,3 +571,62 @@ export function buildCLICommandValidator(
     return validateCLICommandArgs(map.get(name) ?? null, args, extraFlags);
   };
 }
+
+/**
+ * Flatten a set of commands into a single Zod object schema addressing the
+ * whole bundle: a `command` field naming which command to run, plus every
+ * command's `inputSchema` fields merged at the top level.
+ *
+ * A caller invokes the bundle by naming one command and supplying that
+ * command's args — as a positional (`bundle foo --target x`) or as a flag
+ * (`bundle --command foo --target x`); `command` is a normal enum field, so
+ * both forms parse through {@link parseCliArgs}. The positional form
+ * requires passing `positionalKeys: ["command"]` to `parseCliArgs`.
+ *
+ * Because the flattened args span many commands but only the selected
+ * command's args apply on any one call, **every merged arg is relaxed to
+ * `.optional()`** — the schema is a permissive superset. Each command's true
+ * required-ness is still enforced downstream by {@link validateCLICommandArgs}
+ * against that command's own `inputSchema`. Same-named fields from different
+ * commands collapse to one (last registration wins).
+ *
+ * The `command` field mirrors {@link inferOptionType}'s enum convention:
+ * ≥2 names → `z.enum`, exactly 1 → `z.literal`, none → `z.string`.
+ *
+ * ```ts
+ * const SkillSchema = createFlatCommandSchema(registry.all);
+ * // → z.object({ command: z.enum(["foo","bar"]), target: z.string().optional() })
+ * ```
+ */
+export function createFlatCommandSchema(
+  commands: CLICommand[],
+): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  const names = commands
+    .map((cmd) => cmd.name)
+    .filter((name): name is string => !!name);
+
+  const args: Record<string, z.ZodTypeAny> = {};
+  for (const cmd of commands) {
+    if (!(cmd.inputSchema instanceof z.ZodObject)) continue;
+    for (const [key, field] of Object.entries(cmd.inputSchema.shape)) {
+      const f = field as z.ZodTypeAny;
+      // Avoid double-wrapping: only wrap if not already optional.
+      args[key] = f instanceof z.ZodOptional ? f : f.optional();
+    }
+  }
+
+  const command =
+    names.length >= 2
+      ? z.enum(names as [string, ...string[]])
+      : names.length === 1
+        ? z.literal(names[0]!)
+        : z.string();
+
+  // Spread the flattened args first so the `command` selector is set last and
+  // always wins — a command whose own inputSchema has a field named "command"
+  // cannot shadow the bundle selector.
+  return z.object({
+    ...args,
+    command: command.describe("Which command in the bundle to run"),
+  });
+}

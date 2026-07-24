@@ -79,6 +79,7 @@ export {
   parseCliArgs,
   validateCLICommandArgs,
   buildCLICommandValidator,
+  createFlatCommandSchema,
 } from "./zod-cli";
 
 // CLI Builder
