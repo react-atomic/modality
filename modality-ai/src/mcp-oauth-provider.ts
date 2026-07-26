@@ -2,7 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { OAuthClientProvider, OAuthDiscoveryState, AddClientAuthentication } from "@modelcontextprotocol/sdk/client/auth.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState, type AddClientAuthentication } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
@@ -543,4 +545,154 @@ function resolveServerIdentity(serverUrl: string): ServerClientIdentity | null {
     }
   }
   return null;
+}
+
+// ── Hosted OAuth (server-side integration) ─────────────────────────────────────
+
+/** Options for {@link createHostedOAuth}. */
+export interface HostedOAuthOptions {
+  /**
+   * Path the host server exposes for the OAuth redirect, e.g. "/oauth/callback".
+   * Wire your route to forward requests to the returned `handleCallback`.
+   */
+  callbackPath: string;
+  /**
+   * Returns the port the host server is bound to. Called per flow, so it can
+   * reflect the live runtime port (e.g. parsed from a getHonoUrl() helper)
+   * instead of a hardcoded guess.
+   */
+  getPort: () => number | Promise<number>;
+  /** Host used in the redirect_uri. Default "127.0.0.1". */
+  host?: string;
+  /** OAuth client display name registered with the server. Default "mcp-cli". */
+  clientName?: string;
+}
+
+/** Outcome of a hosted OAuth flow. */
+export interface HostedOAuthResult {
+  status: "authorized" | "already_authorized";
+  message: string;
+}
+
+/**
+ * Input accepted by {@link HostedOAuth.handleCallback}: either a raw web
+ * `Request` (e.g. from `Bun.serve`) or any object exposing one at `req.raw`,
+ * which a Hono `Context` satisfies structurally. This lets the handler be
+ * passed directly to `app.get(path, oauth.handleCallback)` with no wrapper,
+ * while staying framework-agnostic (no `hono` dependency).
+ */
+export type OAuthCallbackInput = Request | { req: { raw: Request } };
+
+/** The two functions a host server wires in to enable hosted OAuth. */
+export interface HostedOAuth {
+  /**
+   * Handle a browser redirect forwarded from the host's callback route.
+   * Correlates the request to the awaiting provider by its `state`, resolves
+   * that flow, and returns the page to render in the tab. Returns a 400 when no
+   * matching flow is pending (unknown/expired state).
+   *
+   * Accepts a raw `Request` or a Hono `Context` — pass it straight to a route:
+   *   app.get("/oauth/callback", oauth.handleCallback)   // Hono
+   *   Bun.serve({ fetch: oauth.handleCallback })         // raw Request
+   */
+  handleCallback(input: OAuthCallbackInput): Response;
+  /**
+   * Run — or short-circuit if already authorized — the OAuth flow for an MCP
+   * server URL. Shape-compatible with modality-mcp-kit's OAuthAllowAccessFn, so
+   * it can be passed straight to `mcpProxyHandler`.
+   */
+  allowAccess(serverUrl: string, mcpName: string): Promise<HostedOAuthResult>;
+}
+
+/**
+ * Build a reusable server-side OAuth integration around
+ * {@link CLIBrowserOAuthProvider}'s externalCallback mode: the OAuth redirect
+ * rides on the host's own HTTP server instead of a separate local port, so
+ * there is no extra port to collide with and the redirect_uri stays stable.
+ *
+ * The returned object owns a private `state → provider` map that correlates
+ * each inbound callback to the flow awaiting it, so concurrent flows (e.g.
+ * multiple MCP servers) never cross wires.
+ *
+ * Usage (Hono):
+ *   const oauth = createHostedOAuth({
+ *     callbackPath: "/oauth/callback",
+ *     clientName: "mcp-proxy",
+ *     getPort: async () => Number(new URL(getHonoUrl()).port),
+ *   });
+ *   app.get("/oauth/callback", oauth.handleCallback);
+ *   app.use("/proxy/:mcpName", mcpProxyHandler(SERVERS, oauth.allowAccess));
+ */
+export function createHostedOAuth(options: HostedOAuthOptions): HostedOAuth {
+  const { callbackPath, getPort, host = "127.0.0.1", clientName = "mcp-cli" } = options;
+
+  // Correlates an inbound redirect to the provider awaiting it, keyed by the
+  // CSRF `state`. Set when the browser is sent to authorization, cleared once
+  // the flow settles.
+  const pending = new Map<string, CLIBrowserOAuthProvider>();
+
+  function handleCallback(input: OAuthCallbackInput): Response {
+    // Normalize Hono Context → raw Request; a Request passes through unchanged.
+    const req = input instanceof Request ? input : input.req.raw;
+    const state = new URL(req.url).searchParams.get("state");
+    const provider = state ? pending.get(state) : undefined;
+    if (!provider) {
+      return new Response(
+        "No matching OAuth session (state missing or expired).",
+        { status: 400 },
+      );
+    }
+    return provider.handleCallback(req);
+  }
+
+  async function allowAccess(
+    serverUrl: string,
+    mcpName: string,
+  ): Promise<HostedOAuthResult> {
+    const port = await getPort();
+    const provider = new CLIBrowserOAuthProvider({
+      clientName,
+      serverUrl,
+      externalCallback: { port, path: callbackPath, host },
+      // Register for callback correlation the moment the browser is sent off.
+      onAuthorizationUrl: (url) => {
+        const state = url.searchParams.get("state");
+        if (state) pending.set(state, provider);
+      },
+    });
+
+    try {
+      if (provider.tokens()) {
+        return { status: "already_authorized", message: `${mcpName} already authorized` };
+      }
+
+      const transport = new StreamableHTTPClientTransport(new URL(serverUrl), {
+        authProvider: provider,
+      });
+      const client = new Client({ name: clientName, version: "1.0" }, { capabilities: {} });
+
+      try {
+        await client.connect(transport);
+        await client.close();
+        return { status: "authorized", message: `${mcpName} connected successfully` };
+      } catch (err) {
+        if (!(err instanceof UnauthorizedError)) throw err;
+
+        const code = await provider.waitForCode();
+        await transport.finishAuth(code);
+
+        const transport2 = new StreamableHTTPClientTransport(new URL(serverUrl), {
+          authProvider: provider,
+        });
+        await client.connect(transport2);
+        await client.close();
+        return { status: "authorized", message: `${mcpName} OAuth completed` };
+      }
+    } finally {
+      pending.delete(provider.oauthState);
+      provider.stop();
+    }
+  }
+
+  return { handleCallback, allowAccess };
 }

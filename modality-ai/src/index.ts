@@ -11,4 +11,5 @@ export {
 export type { ModalityClientInstance } from "./ModalityClient";
 export type { ModelMessage } from "ai";
 export type { StdioClientOptions } from "./setupStdioToHttpTools";
-export { CLIBrowserOAuthProvider } from "./mcp-oauth-provider";
+export { CLIBrowserOAuthProvider, createHostedOAuth } from "./mcp-oauth-provider";
+export type { HostedOAuth, HostedOAuthOptions, HostedOAuthResult, OAuthCallbackInput } from "./mcp-oauth-provider";

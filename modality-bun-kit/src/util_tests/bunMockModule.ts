@@ -5,6 +5,7 @@
 
 import { mock } from "bun:test";
 import { resolve } from "node:path";
+import { createRequire } from "node:module";
 
 type MockFactory<T = any> = () => T;
 type ResetFunction = () => void;
@@ -13,8 +14,38 @@ type ResetFunction = () => void;
 const moduleStore = new Map<string, any>();
 
 /**
+ * Resolve a bare package name (e.g. "modality-ai") to its actual entry-point
+ * file path.  Bun's `mock.module()` registers mocks by file path, so passing
+ * a bare specifier only intercepts direct imports of that specifier — it does
+ * NOT intercept imports in transitive dependencies that Bun resolves to the
+ * real file on disk.  Resolving first ensures the mock applies everywhere.
+ *
+ * Relative / absolute paths are returned unchanged.
+ */
+function resolveModulePath(modulePath: string, callerDir?: string): string {
+  // Absolute path — use as-is.
+  if (modulePath.startsWith("/")) return modulePath;
+  // Relative path — resolve against callerDir.
+  if (modulePath.startsWith(".")) return resolve(callerDir || process.cwd(), modulePath);
+
+  // Bare package name — resolve to the real entry-point on disk.
+  // Use createRequire from the caller's directory so locally-linked
+  // packages (file: …, workspace:) resolve correctly.
+  try {
+    const require = createRequire(resolve(callerDir || process.cwd(), "noop.js"));
+    return require.resolve(modulePath);
+  } catch {
+    // Fallback: return as-is if resolution fails (graceful degradation)
+    return modulePath;
+  }
+}
+
+/**
  * Mock a Bun module with automatic lifecycle management
- * @param modulePath - Relative or absolute path to the module to mock
+ * @param modulePath - Relative or absolute path to the module to mock, OR a
+ *                     bare package name (e.g. "modality-ai"). Package names are
+ *                     automatically resolved to their entry-point file so that
+ *                     the mock intercepts imports in transitive dependencies.
  * @param mockFactory - Function that returns the mock object
  * @param callerDir - Optional directory context for resolving relative paths (defaults to current working directory)
  * @returns A reset function that restores the original module (best-effort; if
@@ -35,10 +66,8 @@ export async function bunMockModule<T>(
     throw new Error("Invalid mock factory: mockFactory must be a function");
   }
 
-  // Resolve module path relative to caller directory if provided and path is relative
-  const resolvedPath = modulePath.startsWith(".")
-    ? resolve(callerDir || process.cwd(), modulePath)
-    : modulePath;
+  // Resolve module path — handles relative, absolute, and bare package names
+  const resolvedPath = resolveModulePath(modulePath, callerDir);
 
   // Store original module — best-effort, graceful fallback on failure.
   // When the module has deep transitive dependencies that can't be resolved
