@@ -4,9 +4,12 @@ import { createCommandRegistry } from "../registry";
 import type { CLICommand } from "../help/types";
 
 // Minimal real commands — each records the args it was executed with.
+// Both one-liner fields are set, so the registry's summary/description
+// backfill is a no-op and the command's identity is preserved.
 const makeCmd = (name: string | undefined, ret: unknown = { success: true }): CLICommand =>
   ({
     name,
+    summary: `${name} command`,
     description: `${name} command`,
     inputSchema: z.object({}),
     execute: async (args: unknown) => (ret === "echo" ? args : ret),
@@ -79,6 +82,55 @@ describe("createCommandRegistry", () => {
       success: false,
       error: "Unknown command: ghost",
     });
+  });
+
+  // ── summary/description backfill ────────────────────────────────────────
+
+  const oneLiner = (fields: Partial<CLICommand>): CLICommand =>
+    ({ name: "x", inputSchema: z.object({}), execute: async () => ({}), ...fields }) as unknown as CLICommand;
+
+  test("backfills summary from description when summary is absent", () => {
+    const registry = createCommandRegistry([oneLiner({ description: "does x" })]);
+    const got = registry.get("x")!;
+    expect(got.summary).toBe("does x");
+    expect(got.description).toBe("does x");
+  });
+
+  test("backfills description from summary when description is absent", () => {
+    const registry = createCommandRegistry([oneLiner({ summary: "does x" })]);
+    const got = registry.get("x")!;
+    expect(got.description).toBe("does x");
+    expect(got.summary).toBe("does x");
+  });
+
+  test("leaves a command that already sets both fields untouched (identity preserved)", () => {
+    const cmd = makeCmd("z");
+    const registry = createCommandRegistry([cmd]);
+    expect(registry.get("z")).toBe(cmd);
+    expect(registry.all[0]).toBe(cmd);
+  });
+
+  test("when both summary and description are absent, both remain undefined and identity is preserved", () => {
+    const cmd = oneLiner({});
+    const registry = createCommandRegistry([cmd]);
+    const got = registry.get("x")!;
+    expect(got.summary).toBeUndefined();
+    expect(got.description).toBeUndefined();
+    expect(got).toBe(cmd);
+  });
+
+  test("backfilled commands resolve correctly via aliases", () => {
+    const cmd = oneLiner({ description: "does x" });
+    const registry = createCommandRegistry([cmd], { x: ["xi"] });
+    const got = registry.get("xi")!;
+    expect(got).toBe(registry.get("x")!);
+    expect(got.summary).toBe("does x");
+  });
+
+  test("nameless commands with undefined fields are filtered without error", () => {
+    const nameless = oneLiner({ name: undefined, summary: undefined, description: undefined });
+    const registry = createCommandRegistry([nameless]);
+    expect(registry.all).toEqual([]);
   });
 
   // ── Regression / edge-case coverage ─────────────────────────────────────

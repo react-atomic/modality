@@ -49,9 +49,22 @@ export function createCommandRegistry(
 ): CommandRegistry {
   // Only named commands are resolvable; drop nameless ones up front so the
   // lookup map and the exposed `all` list agree on what "registered" means.
-  const registered = commands.filter(
-    (cmd): cmd is CLICommand & { name: string } => !!cmd.name,
-  );
+  //
+  // Normalize the two one-liner fields: help renders the command index from
+  // `summary` and derives per-command help from `description`, but a command
+  // may declare either one. Backfill each from the other so both paths render
+  // regardless of which field the command author set — packages never have to
+  // bridge `summary`↔`description` themselves. A command that already carries
+  // both is returned untouched (identity preserved); only an under-specified
+  // one is replaced with an enriched copy.
+  const registered = commands
+    .filter((cmd): cmd is CLICommand & { name: string } => !!cmd.name)
+    .map((cmd): CLICommand & { name: string } => {
+      const summary = cmd.summary ?? cmd.description;
+      const description = cmd.description ?? cmd.summary;
+      if (summary === cmd.summary && description === cmd.description) return cmd;
+      return { ...cmd, summary, description };
+    });
 
   const map = new Map<string, CLICommand>();
   for (const cmd of registered) {
