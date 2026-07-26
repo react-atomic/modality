@@ -55,3 +55,31 @@ describe("bunMockModule", () => {
     expect(mod.value).toBe(1);
   });
 });
+
+// ── resolveModulePath (tested indirectly via bunMockModule) ────────────────
+
+describe("bunMockModule — module path resolution", () => {
+  test("absolute path is used as-is", async () => {
+    const absolutePath = "/Volumes/GoldenSnake/git/modality/modality-bun-kit/src/util_tests/__tests__/fake.import.ts";
+    const reset = await bunMockModule(absolutePath, () => ({ resolved: true }), __dirname);
+    expect(typeof reset).toBe("function");
+    reset();
+  });
+
+  test("bare package name that doesn't exist returns gracefully", async () => {
+    // Unknown package — should not throw, mock should apply
+    const path = "__nonexistent_package_xyz__";
+    await bunMockModule(path, () => ({ mock: true }), __dirname);
+    const mod: any = await import(path);
+    expect(mod.mock).toBe(true);
+  });
+
+  test("bare package name resolves via bunMockModule", async () => {
+    // Use a unique bare specifier to avoid conflicts with other tests
+    const path = "__relative_test_path__";
+    const reset = await bunMockModule(path, () => ({ custom: "value" }), __dirname);
+    const mod: any = await import(path);
+    expect(mod.custom).toBe("value");
+    reset();
+  });
+});

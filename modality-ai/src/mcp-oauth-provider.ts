@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { UnauthorizedError, type OAuthClientProvider, type OAuthDiscoveryState, type AddClientAuthentication } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { AuthorizationServerMetadata } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
@@ -75,11 +76,18 @@ const SERVER_IDENTITY_WHITELIST: Record<string, ServerClientIdentity> = {
   },
 };
 
-// Persisted shape written to ~/.cache/inspect-mcp/<key>.json
+// Persisted shape written to ~/.cache/counter/<key>.json
 interface PersistedState {
   clientInfo?: OAuthClientInformationMixed;
   tokens?: OAuthTokens;
 }
+
+/** OAuth error codes for callback handling */
+const OAUTH_ERROR_CODES = {
+  ALREADY_COMPLETED: "already_completed",
+  STATE_MISMATCH: "state_mismatch",
+  NO_CODE: "no_code",
+} as const;
 
 /**
  * OAuthClientProvider for CLI tools.
@@ -189,11 +197,20 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
 
     // Invalidate cached clientInfo if its redirect_uris don't match the current
     // redirectUrl — e.g. after switching --callback-port or fixing a broken cache.
-    if (this._clientInfo) {
-      const uris: string[] = (this._clientInfo as Record<string, unknown>).redirect_uris as string[] ?? [];
-      if (!uris.includes(this.redirectUrl)) {
-        this._clientInfo = undefined;
-      }
+    // Skip this when clientId was explicitly provided (no redirect_uris expected).
+    this._invalidateStaleCache(options.clientId);
+  }
+
+  /**
+   * Clear cached clientInfo when its redirect_uris don't match the current redirectUrl.
+   * This handles the case where the user switches --callback-port or the cache is stale.
+   * Skip invalidation when clientId is explicitly provided (no redirect_uris expected).
+   */
+  private _invalidateStaleCache(clientId?: string): void {
+    if (!this._clientInfo || clientId) return;
+    const uris: string[] = (this._clientInfo as Record<string, unknown>).redirect_uris as string[] ?? [];
+    if (!uris.includes(this.redirectUrl)) {
+      this._clientInfo = undefined;
     }
   }
 
@@ -264,6 +281,8 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   readonly addClientAuthentication: AddClientAuthentication = (
     _headers: Headers,
     params: URLSearchParams,
+    _url: string | URL,
+    _metadata?: AuthorizationServerMetadata,
   ): void => {
     const info = this._clientInfo;
     if (!info) return;
@@ -365,7 +384,10 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     if (this._tokens) state.tokens = this._tokens;
     try {
       writeFileSync(this._cachePath, JSON.stringify(state, null, 2));
-    } catch { /* ignore write errors */ }
+    } catch (err) {
+      // Log cache write errors for debugging, but don't fail the auth flow
+      console.error(`[OAuth] Failed to persist cache to ${this._cachePath}:`, err);
+    }
   }
 
   private _handleCallback(req: Request): Response {
@@ -377,7 +399,7 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
 
     // Subsequent callbacks on an already-settled promise are errors.
     if (this._codeSettled) {
-      return errorPage("already_completed", "Authorization code was already received.");
+      return errorPage(OAUTH_ERROR_CODES.ALREADY_COMPLETED, "Authorization code was already received.");
     }
 
     // Reject a mismatched state to block CSRF / cross-flow callback delivery.
@@ -385,7 +407,7 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     if (returnedState !== null && returnedState !== this._state) {
       this._codeSettled = true;
       this._rejectCode?.(new Error("OAuth state mismatch"));
-      return errorPage("state_mismatch", "State parameter did not match.");
+      return errorPage(OAUTH_ERROR_CODES.STATE_MISMATCH, "State parameter did not match.");
     }
 
     const error = url.searchParams.get("error");
@@ -400,7 +422,7 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     if (!code) {
       this._codeSettled = true;
       this._rejectCode?.(new Error("OAuth callback missing authorization code"));
-      return errorPage("no_code", "No authorization code received.");
+      return errorPage(OAUTH_ERROR_CODES.NO_CODE, "No authorization code received.");
     }
 
     this._codeSettled = true;
@@ -455,7 +477,7 @@ function successPage(): Response {
 }
 
 /** Escape HTML special characters to prevent XSS from attacker-controlled strings. */
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -523,7 +545,7 @@ function openBrowser(url: string): void {
 }
 
 /** Short stable hash of a string — used to derive a cache file name from a URL. */
-function urlStorageKey(url: string): string {
+export function urlStorageKey(url: string): string {
   return createHash("sha1").update(url).digest("hex").slice(0, 12);
 }
 
@@ -532,7 +554,7 @@ function urlStorageKey(url: string): string {
  * if none matches. Matching is hostname-suffix based: a key "figma.com"
  * matches "mcp.figma.com", "api.figma.com", etc.
  */
-function resolveServerIdentity(serverUrl: string): ServerClientIdentity | null {
+export function resolveServerIdentity(serverUrl: string): ServerClientIdentity | null {
   let hostname: string;
   try {
     hostname = new URL(serverUrl).hostname;

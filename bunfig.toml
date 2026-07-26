@@ -1,0 +1,5 @@
+[test]
+# Register happy-dom globals so DOM-dependent packages (e.g. modality-dom)
+# work when `bun test` is run from the repo root. Each package's own
+# bunfig.toml still applies when tests are run from inside that package.
+preload = ["./modality-dom/happydom.ts"]
