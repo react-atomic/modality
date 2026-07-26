@@ -11,7 +11,7 @@ export type { CommandExportValidationOptions } from "./command-export-validation
 // Shareable command-registry + argv-dispatch loop so a consuming CLI only
 // supplies its commands and a little config.
 export { createCommandRegistry } from "./registry";
-export type { CommandRegistry } from "./registry";
+export type { CommandRegistry, CommandResolution } from "./registry";
 export { createCliRunner } from "./runner";
 export type { CliRunner, CliRunnerOptions } from "./runner";
 

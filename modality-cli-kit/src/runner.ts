@@ -104,14 +104,24 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       return 0;
     }
 
-    const command = registry.get(name);
-    if (!command) {
-      console.error(`Unknown command: ${name}\n`);
+    // Resolve exact names/aliases and unique prefixes (e.g. `sig` → `signals`);
+    // a prefix shared by several commands comes back as ambiguous.
+    const resolution = registry.resolve(name, { prefix: true });
+    if (!resolution.found) {
+      if (resolution.reason === "ambiguous") {
+        const quoted = resolution.candidates.map((c) => `"${c}"`).join(", ");
+        console.error(`Ambiguous command: "${name}" — matches ${quoted}\n`);
+      } else {
+        console.error(`Unknown command: ${name}\n`);
+      }
       console.log(cli.getHelp());
       return 1;
     }
+    // Use the resolved name so help, validation, and dispatch all agree
+    // even when the user typed a prefix or alias.
+    const { command, name: resolvedName } = resolution;
     if (rest.includes("--help") || rest.includes("-h")) {
-      console.log(cli.getHelp(name));
+      console.log(cli.getHelp(resolvedName));
       return 0;
     }
 
@@ -120,7 +130,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     const { data, warnings } = validateCLICommandArgs(command, rest);
     if (warnings.length > 0) {
       for (const warning of warnings) console.error(warning);
-      console.log(`\n${cli.getHelp(name)}`);
+      console.log(`\n${cli.getHelp(resolvedName)}`);
       return 1;
     }
 

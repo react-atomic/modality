@@ -177,3 +177,78 @@ describe("createCommandRegistry", () => {
     expect(await registry.execute("echo", args)).toEqual(args);
   });
 });
+
+describe("createCommandRegistry.resolve", () => {
+  test("an exact name resolves without the prefix option", () => {
+    const signals = makeCmd("signals");
+    const registry = createCommandRegistry([signals]);
+    expect(registry.resolve("signals")).toEqual({ found: true, name: "signals", command: signals });
+  });
+
+  test("an exact alias resolves to the canonical command", () => {
+    const foo = makeCmd("foo");
+    const registry = createCommandRegistry([foo], { foo: ["f"] });
+    const r = registry.resolve("f");
+    expect(r).toEqual({ found: true, name: "foo", command: foo });
+  });
+
+  test("a prefix is unknown unless prefix matching is enabled", () => {
+    const registry = createCommandRegistry([makeCmd("signals")]);
+    expect(registry.resolve("sig")).toEqual({ found: false, reason: "unknown", candidates: [] });
+  });
+
+  test("a unique prefix resolves with { prefix: true }", () => {
+    const signals = makeCmd("signals");
+    const registry = createCommandRegistry([signals, makeCmd("boom")]);
+    expect(registry.resolve("sig", { prefix: true })).toEqual({ found: true, name: "signals", command: signals });
+  });
+
+  test("an ambiguous prefix reports the candidate names", () => {
+    const registry = createCommandRegistry([makeCmd("start"), makeCmd("stop")]);
+    const r = registry.resolve("st", { prefix: true });
+    expect(r.found).toBe(false);
+    if (!r.found) {
+      expect(r.reason).toBe("ambiguous");
+      expect(r.candidates.sort()).toEqual(["start", "stop"]);
+    }
+  });
+
+  test("an exact match wins even when it is also a prefix of others", () => {
+    const stop = makeCmd("stop");
+    const registry = createCommandRegistry([stop, makeCmd("stopwatch")], {});
+    expect(registry.resolve("stop", { prefix: true })).toEqual({ found: true, name: "stop", command: stop });
+  });
+
+  test("a name and its own alias sharing the prefix is one command, not ambiguous", () => {
+    const foobar = makeCmd("foobar");
+    const registry = createCommandRegistry([foobar], { foobar: ["foobaz"] });
+    expect(registry.resolve("foo", { prefix: true })).toEqual({ found: true, name: "foobar", command: foobar });
+  });
+
+  test("a prefix that matches nothing is unknown", () => {
+    const registry = createCommandRegistry([makeCmd("signals")]);
+    expect(registry.resolve("zzz", { prefix: true })).toEqual({ found: false, reason: "unknown", candidates: [] });
+  });
+
+  test("resolve() on an empty registry returns unknown for any input", () => {
+    const registry = createCommandRegistry([]);
+    expect(registry.resolve("anything")).toEqual({ found: false, reason: "unknown", candidates: [] });
+  });
+
+  test("the CommandResolution type shape is a discriminated union on `found`", () => {
+    const registry = createCommandRegistry([makeCmd("ok")], { ok: ["k"] });
+    const success = registry.resolve("ok");
+    const fail = registry.resolve("missing");
+    // TypeScript already enforces the union; runtime checks guard against future drift.
+    expect(success.found).toBe(true);
+    if (success.found) {
+      expect(typeof success.name).toBe("string");
+      expect(typeof success.command.execute).toBe("function");
+    }
+    expect(fail.found).toBe(false);
+    if (!fail.found) {
+      expect(["unknown", "ambiguous"]).toContain(fail.reason);
+      expect(Array.isArray(fail.candidates)).toBe(true);
+    }
+  });
+});

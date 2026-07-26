@@ -208,4 +208,58 @@ describe("createCliRunner.run", () => {
     // Help should also be shown
     expect(logs.join("\n")).toContain("greet");
   });
+
+  // ── Prefix matching (always on) ──────────────────────────────────────────
+
+  const startCmd = {
+    name: "start",
+    description: "Start it",
+    inputSchema: z.object({}),
+    execute: async () => ({ success: true, message: "started" }),
+  } as unknown as CLICommand;
+  const stopCmd = {
+    name: "stop",
+    description: "Stop it",
+    inputSchema: z.object({}),
+    execute: async () => ({ success: true, message: "stopped" }),
+  } as unknown as CLICommand;
+  const prefixOpts = () => ({
+    cliName: "my-cli",
+    tagline: "My toolkit",
+    registry: createCommandRegistry([startCmd, stopCmd]),
+  });
+
+  test("a unique prefix resolves to its command", async () => {
+    const rendered: unknown[] = [];
+    const { code } = await runCapturing({ ...prefixOpts(), render: (r) => rendered.push(r) }, ["sta"]);
+    expect(code).toBe(0);
+    expect(rendered).toEqual([{ success: true, message: "started" }]);
+  });
+
+  test("an ambiguous prefix errors with candidates and returns 1", async () => {
+    const { code, errs } = await runCapturing(prefixOpts(), ["st"]);
+    expect(code).toBe(1);
+    const out = errs.join("\n");
+    expect(out).toContain("Ambiguous command");
+    expect(out).toContain('"start"');
+    expect(out).toContain('"stop"');
+  });
+
+  test("a token that is no command's prefix is still unknown", async () => {
+    const { code, errs } = await runCapturing(prefixOpts(), ["zzz"]);
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toContain("Unknown command: zzz");
+  });
+
+  test("--help after a prefix shows the resolved command's help", async () => {
+    const { code, logs } = await runCapturing(prefixOpts(), ["sta", "--help"]);
+    expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("my-cli start");
+  });
+
+  test("--help after an exact name shows that command's help", async () => {
+    const { code, logs } = await runCapturing(prefixOpts(), ["start", "--help"]);
+    expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("my-cli start");
+  });
 });

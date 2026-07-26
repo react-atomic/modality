@@ -24,6 +24,16 @@
  */
 import type { CLICommand } from "./help/types";
 
+/**
+ * Outcome of {@link CommandRegistry.resolve}. On success it carries the
+ * canonical command; on failure it says whether the input matched nothing
+ * (`unknown`) or several commands (`ambiguous`, with the candidate names so the
+ * caller can suggest them).
+ */
+export type CommandResolution =
+  | { found: true; name: string; command: CLICommand }
+  | { found: false; reason: "unknown" | "ambiguous"; candidates: string[] };
+
 /** A resolved command registry returned by {@link createCommandRegistry}. */
 export interface CommandRegistry {
   /** All registered commands, in declaration order. */
@@ -32,6 +42,12 @@ export interface CommandRegistry {
   aliases: Record<string, string[]>;
   /** Resolve a command by its name or any alias. */
   get(name: string): CLICommand | undefined;
+  /**
+   * Resolve an input to a command. An exact name/alias always wins. With
+   * `{ prefix: true }`, an input that is a unique prefix of exactly one command
+   * also resolves; a prefix shared by several yields an `ambiguous` result.
+   */
+  resolve(input: string, options?: { prefix?: boolean }): CommandResolution;
   /** Resolve and run a command; unknown names return a `success: false` envelope. */
   execute(name: string, args: unknown): Promise<unknown>;
 }
@@ -79,6 +95,28 @@ export function createCommandRegistry(
     all: registered,
     aliases,
     get: (name: string) => map.get(name),
+    resolve(input: string, options?: { prefix?: boolean }): CommandResolution {
+      // An exact name or alias always wins, even when it is also a prefix of
+      // longer names (e.g. "fx" when "fx-usd" exists).
+      const exact = map.get(input);
+      if (exact) return { found: true, name: exact.name!, command: exact };
+      if (!options?.prefix) return { found: false, reason: "unknown", candidates: [] };
+
+      // Match the input against every lookup key (names + aliases), then
+      // collapse to distinct commands — a name and its own aliases sharing the
+      // prefix is still one command, not an ambiguity.
+      const commands = new Set<CLICommand>();
+      for (const [key, cmd] of map) if (key.startsWith(input)) commands.add(cmd);
+
+      if (commands.size === 1) {
+        const cmd = commands.values().next().value!;
+        return { found: true, name: cmd.name!, command: cmd };
+      }
+      if (commands.size > 1) {
+        return { found: false, reason: "ambiguous", candidates: [...commands].map((c) => c.name!) };
+      }
+      return { found: false, reason: "unknown", candidates: [] };
+    },
     async execute(name: string, args: unknown) {
       const cmd = map.get(name);
       if (!cmd) return { success: false, error: `Unknown command: ${name}` };
