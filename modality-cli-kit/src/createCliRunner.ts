@@ -25,6 +25,7 @@
  * process.exit(await cli.run());
  * ```
  */
+import type { AITool } from "modality-mcp-kit";
 import type { z } from "zod";
 import { buildCliFromTools } from "./help/cli-builder";
 import { validateCLICommandArgs } from "./help/zod-cli";
@@ -38,13 +39,22 @@ export interface CliRunnerOptions {
   tagline: string;
   /** The command registry to dispatch into. */
   registry: CommandRegistry;
+  /**
+   * The "counter script" — the single {@link AITool} entry point your MCP
+   * server also exposes (e.g. `scripts/index.ts`'s `aiTool`). When supplied,
+   * the runner dispatches through `aiTool.execute({ command, ...args })` so CLI
+   * runs and MCP tool calls share one execution path (auth checks, wrapping,
+   * flat-schema handling, etc.). Omit it to dispatch commands directly.
+   */
+  aiTool?: AITool;
   /** Global flags (e.g. `--help`, `--json`) rendered in the help footer. */
   globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>;
   /** Schema keys shared by all commands to keep out of per-command options. */
   skipFields?: string[];
   /**
    * Invoked when argv is empty. Return a process exit code. When omitted, the
-   * runner prints global help and returns 1.
+   * runner defers to {@link CliRunnerOptions.aiTool} (calling `execute({})`,
+   * returning 0) if one is set, otherwise prints global help and returns 1.
    */
   onEmpty?: () => number | Promise<number>;
   /** Render a command result to stdout. Default: pretty-printed JSON. */
@@ -67,6 +77,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     cliName,
     tagline,
     registry,
+    aiTool,
     globalOptionsSchema,
     skipFields,
     onEmpty,
@@ -91,6 +102,12 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
 
     if (!name) {
       if (onEmpty) return onEmpty();
+      // With an aiTool but no explicit onEmpty, defer the empty invocation to
+      // the tool (its no-command path is a no-op) instead of printing help.
+      if (aiTool) {
+        await aiTool.execute({});
+        return 0;
+      }
       console.log(cli.getHelp());
       return 1;
     }
@@ -134,8 +151,17 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       return 1;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- validateCLICommandArgs returns unknown; execute accepts the command's schema type which we cannot know statically
-    const result = await command.execute(data as any);
+    // validateCLICommandArgs returns unknown; execute accepts the command's
+    // schema type which we cannot know statically.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const args = data as any;
+    // When an aiTool (counter script) is supplied, route through it so CLI
+    // dispatch matches the MCP tool exactly; otherwise call the command direct.
+    // `command` goes last so the resolved name always wins over any same-named
+    // field in the validated args.
+    const result = aiTool
+      ? await aiTool.execute({ ...args, command: resolvedName })
+      : await command.execute(args);
     renderResult(result);
     const succeeded = result && typeof result === "object" && "success" in result
       ? (result as { success: boolean }).success !== false

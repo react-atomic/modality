@@ -12,8 +12,8 @@ export type { CommandExportValidationOptions } from "./command-export-validation
 // supplies its commands and a little config.
 export { createCommandRegistry } from "./registry";
 export type { CommandRegistry, CommandResolution } from "./registry";
-export { createCliRunner } from "./runner";
-export type { CliRunner, CliRunnerOptions } from "./runner";
+export { createCliRunner } from "./createCliRunner";
+export type { CliRunner, CliRunnerOptions } from "./createCliRunner";
 
 // ── CLI Output Types ────────────────────────────────────────────────────────
 // Shared output format types (JSON, human, JSONL) for CLI commands.

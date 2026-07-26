@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { z } from "zod";
-import { createCliRunner } from "../runner";
+import { createCliRunner } from "../createCliRunner";
 import { createCommandRegistry } from "../registry";
 import { setNoColor } from "../help/colors";
 import type { CLICommand } from "../help/types";
@@ -261,5 +261,101 @@ describe("createCliRunner.run", () => {
     const { code, logs } = await runCapturing(prefixOpts(), ["start", "--help"]);
     expect(code).toBe(0);
     expect(logs.join("\n")).toContain("my-cli start");
+  });
+});
+
+// ── aiTool (counter-script) dispatch ───────────────────────────────────────
+// When `aiTool` is supplied the runner routes through `aiTool.execute` instead
+// of calling the resolved command directly, so CLI and MCP share one path.
+describe("createCliRunner.run — aiTool dispatch", () => {
+  /** A recording aiTool that captures the payload it was dispatched. */
+  function spyTool(result: unknown = { success: true }) {
+    const calls: unknown[] = [];
+    const aiTool = {
+      execute: async (payload: unknown) => {
+        calls.push(payload);
+        return result;
+      },
+    } as unknown as NonNullable<Parameters<typeof createCliRunner>[0]["aiTool"]>;
+    return { aiTool, calls };
+  }
+
+  /** A command that records whether its own execute() ran. */
+  function spyGreet() {
+    const calls: unknown[] = [];
+    const cmd = {
+      name: "greet",
+      description: "Greet someone",
+      inputSchema: z.object({ name: z.string().describe("Name to greet") }),
+      positionalKeys: ["name"],
+      execute: async (args: { name: string }) => {
+        calls.push(args);
+        return { success: true, message: `direct ${args.name}` };
+      },
+    } as unknown as CLICommand;
+    return { registry: createCommandRegistry([cmd], { greet: ["g"] }), calls };
+  }
+
+  test("dispatch routes through aiTool.execute when one is supplied", async () => {
+    const { aiTool, calls } = spyTool();
+    await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["greet", "World"]);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("aiTool receives the resolved command name plus validated args", async () => {
+    const { aiTool, calls } = spyTool();
+    await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["greet", "World"]);
+    expect(calls[0]).toMatchObject({ command: "greet", name: "World" });
+  });
+
+  test("aiTool receives the canonical name even when invoked by alias", async () => {
+    const { aiTool, calls } = spyTool();
+    await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["g", "World"]);
+    expect((calls[0] as { command: string }).command).toBe("greet");
+  });
+
+  test("the command's own execute is bypassed when aiTool handles dispatch", async () => {
+    const { registry, calls } = spyGreet();
+    const { aiTool } = spyTool();
+    await runCapturing(
+      { cliName: "my-cli", tagline: "t", registry, aiTool, render: () => {} },
+      ["greet", "World"],
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  test("aiTool's result drives the exit code (success:false → 1)", async () => {
+    const { aiTool } = spyTool({ success: false, error: "nope" });
+    const { code } = await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["greet", "World"]);
+    expect(code).toBe(1);
+  });
+
+  test("aiTool's result is passed to render", async () => {
+    const rendered: unknown[] = [];
+    const { aiTool } = spyTool({ success: true, message: "via tool" });
+    await runCapturing({ ...baseOpts(), aiTool, render: (r) => rendered.push(r) }, ["greet", "World"]);
+    expect(rendered).toEqual([{ success: true, message: "via tool" }]);
+  });
+
+  test("empty argv defers to aiTool.execute({}) and returns 0", async () => {
+    const { aiTool, calls } = spyTool();
+    const { code } = await runCapturing({ ...baseOpts(), aiTool }, []);
+    expect(code).toBe(0);
+    expect(calls).toEqual([{}]);
+  });
+
+  test("an explicit onEmpty still wins over the aiTool default", async () => {
+    const { aiTool, calls } = spyTool();
+    const { code } = await runCapturing({ ...baseOpts(), aiTool, onEmpty: () => 9 }, []);
+    expect(code).toBe(9);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("empty-argv defer returns 0 even when the aiTool reports success:false", async () => {
+    // The defer branch hard-returns 0 and never inspects the result, unlike the
+    // command-dispatch path which maps success:false → exit 1.
+    const { aiTool } = spyTool({ success: false, error: "ignored" });
+    const { code } = await runCapturing({ ...baseOpts(), aiTool }, []);
+    expect(code).toBe(0);
   });
 });
