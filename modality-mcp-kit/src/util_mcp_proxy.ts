@@ -9,10 +9,19 @@
  */
 
 import { SimpleCache } from "modality-kit";
-import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import {
+  getStoredOAuthToken,
+  clearStoredOAuthTokens,
+} from "./utils/oauth-token-store";
+
+/**
+ * Callback that runs an external OAuth "allow access" flow for a server.
+ * Injected by the host so this package stays free of a concrete OAuth client.
+ */
+export type OAuthAllowAccessFn = (
+  serverUrl: string,
+  mcpName: string
+) => Promise<{ status: string; message?: string }>;
 
 // ============================================
 // MCP SERVER CONFIGURATION
@@ -225,34 +234,9 @@ function getAnyCacheForMethod(
   }
 }
 
-// ============================================
-// OAUTH TOKEN HELPERS
-// ============================================
-
-function getOAuthCachePath(serverUrl: string): string {
-  const key = createHash("sha1").update(serverUrl).digest("hex").slice(0, 12);
-  return join(homedir(), ".cache", "counter", `${key}.json`);
-}
-
-function getStoredOAuthToken(serverUrl: string): string | null {
-  try {
-    const data = JSON.parse(readFileSync(getOAuthCachePath(serverUrl), "utf8"));
-    return data.tokens?.access_token ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function clearStoredOAuthTokens(serverUrl: string): boolean {
-  const cachePath = getOAuthCachePath(serverUrl);
-  try {
-    const data = JSON.parse(readFileSync(cachePath, "utf8"));
-    delete data.tokens;
-    writeFileSync(cachePath, JSON.stringify(data, null, 2));
-    return true;
-  } catch {
-    return false;
-  }
+/** Wrap a JSON body in SSE event format if not already wrapped. */
+function wrapAsSSE(body: string): string {
+  return body.includes("event:") ? body : `event: message\ndata: ${body}\n\n`;
 }
 
 // ============================================
@@ -339,8 +323,7 @@ async function prefetchAndCacheTools(
 
     if (response.ok && tools !== null) {
       const ttl = METHOD_TTL_MS["tools/list"];
-      const cacheValue = body.includes("event:") ? body : `event: message\ndata: ${body}\n\n`;
-      cache.set(cacheKey, cacheValue, ttl);
+      cache.set(cacheKey, wrapAsSSE(body), ttl);
       console.log(`[MCP-PROXY] Prefetched and cached tools/list for ${mcpName}`);
     } else {
       console.warn(`[MCP-PROXY] Skipping cache for ${mcpName} tools/list — status: ${response.status}, tools parsed: ${tools !== null}`);
@@ -356,12 +339,6 @@ async function prefetchAndCacheTools(
 // ============================================
 // HONO HANDLERS
 // ============================================
-
-export type OAuthAllowAccessFn = (
-  serverUrl: string,
-  mcpName: string
-) => Promise<{ status: string; message?: string }>;
-
 
 /**
  * Hono handler for MCP proxy
@@ -761,23 +738,19 @@ export const mcpProxyHandler =
                       chunks.push(result.value);
                     }
                   }
-                  const fullBody = new TextDecoder().decode(
-                    new Uint8Array(
-                      chunks.reduce(
-                        (acc, chunk) => [...acc, ...chunk],
-                        [] as number[]
-                      )
-                    )
-                  );
+                  const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+                  const merged = new Uint8Array(totalLength);
+                  let offset = 0;
+                  for (const chunk of chunks) {
+                    merged.set(chunk, offset);
+                    offset += chunk.length;
+                  }
+                  const fullBody = new TextDecoder().decode(merged);
 
                   // Store in cache with proper SSE format
                   const methods = getMethodsFromRequest(requestData);
                   const ttl = getTTLForMethods(methods);
-                  let cacheValue = fullBody;
-                  if (!fullBody.includes("event:")) {
-                    cacheValue = `event: message\ndata: ${fullBody}\n\n`;
-                  }
-                  cache.set(cacheKey!, cacheValue, ttl);
+                  cache.set(cacheKey!, wrapAsSSE(fullBody), ttl);
                   console.log(`[MCP-PROXY] Cached response for ${cacheKey}`);
                 } catch (e) {
                   console.error(`[MCP-PROXY] Cache error:`, e);

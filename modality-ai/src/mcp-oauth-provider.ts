@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -20,8 +20,24 @@ interface CLIBrowserOAuthProviderOptions {
   /**
    * Port for the local callback server.
    * Defaults to 9876 for a stable redirect_uri across runs.
+   * Ignored when `externalCallback` is set.
    */
   callbackPort?: number;
+  /**
+   * Route the OAuth redirect through an existing HTTP server instead of
+   * starting a local Bun.serve. When set, the provider binds no port of its
+   * own — the host app must forward the redirect request to `handleCallback()`.
+   * `port`/`path`/`host` define the advertised redirect_uri and must match the
+   * host server (defaults: host "127.0.0.1", path "/callback").
+   * Correlate the inbound callback to this provider via `oauthState`.
+   */
+  externalCallback?: { port: number; path?: string; host?: string };
+  /**
+   * Invoked with the full authorization URL just before the browser opens.
+   * Lets the host correlate the later callback to this provider (e.g. by
+   * reading the `state` query param, which equals `oauthState`).
+   */
+  onAuthorizationUrl?: (url: URL) => void;
   /**
    * Skip opening the system browser automatically.
    * When true the authorization URL is printed but not launched.
@@ -95,11 +111,16 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   private readonly _serverIdentity: ServerClientIdentity | null;
   private readonly _noOpen: boolean;
   private readonly _cachePath: string | null;
+  private readonly _callbackPath: string;
+  private readonly _callbackHost: string;
+  private readonly _state: string;
+  private readonly _onAuthorizationUrl?: (url: URL) => void;
   private _port: number;
-  private _server: ReturnType<typeof Bun.serve>;
+  private _server?: ReturnType<typeof Bun.serve>;
   private _resolveCode?: (code: string) => void;
   private _rejectCode?: (err: Error) => void;
   private _pendingCode: Promise<string>;
+  private _codeSettled = false;
   private _codeVerifier?: string;
   private _clientInfo?: OAuthClientInformationMixed;
   private _tokens?: OAuthTokens;
@@ -108,6 +129,10 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   constructor(options: CLIBrowserOAuthProviderOptions = {}) {
     this._clientName = options.clientName ?? "mcp-cli";
     this._noOpen = options.noOpen ?? false;
+    this._onAuthorizationUrl = options.onAuthorizationUrl;
+    this._state = randomBytes(16).toString("hex");
+    this._callbackPath = options.externalCallback?.path ?? "/callback";
+    this._callbackHost = options.externalCallback?.host ?? "127.0.0.1";
 
     // Resolve server-specific client identity from the whitelist
     this._serverIdentity = options.serverUrl
@@ -141,15 +166,24 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
       this._rejectCode = reject;
     });
 
-    // Start server eagerly so redirectUrl is stable before the SDK calls
-    // clientMetadata / redirectUrl getters during dynamic client registration.
-    // Default to port 9876 for a stable redirect_uri across runs — random ports
-    // cause re-registration every run and redirect_uri mismatch on token exchange.
-    this._server = Bun.serve({
-      port: options.callbackPort ?? 9876,
-      fetch: (req) => this._handleCallback(req),
-    });
-    this._port = this._server.port ?? 9876;
+    // Resolve redirectUrl before the SDK calls clientMetadata / redirectUrl
+    // getters during dynamic client registration.
+    if (options.externalCallback) {
+      // Host-managed mode: bind no port of our own — the host server owns the
+      // port and forwards the redirect to handleCallback(). redirect_uri stays
+      // stable across runs, so cached clientInfo survives (no re-registration).
+      this._port = options.externalCallback.port;
+    } else {
+      // Start our own callback server eagerly so redirectUrl is stable before
+      // registration. Default to port 9876 for a stable redirect_uri across
+      // runs — random ports cause re-registration every run and redirect_uri
+      // mismatch on token exchange.
+      this._server = Bun.serve({
+        port: options.callbackPort ?? 9876,
+        fetch: (req) => this._handleCallback(req),
+      });
+      this._port = this._server.port ?? 9876;
+    }
 
     // Invalidate cached clientInfo if its redirect_uris don't match the current
     // redirectUrl — e.g. after switching --callback-port or fixing a broken cache.
@@ -164,7 +198,7 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   // ── OAuthClientProvider interface ──────────────────────────────────────────
 
   get redirectUrl(): string {
-    return `http://127.0.0.1:${this._port}/callback`;
+    return `http://${this._callbackHost}:${this._port}${this._callbackPath}`;
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -238,7 +272,18 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     }
   };
 
+  /**
+   * CSRF `state` echoed back on the redirect. The SDK reads this via the
+   * optional `state()` hook and appends it to the authorization request; the
+   * callback validates it. Also used by host apps to correlate an external
+   * callback to this provider instance.
+   */
+  state(): string {
+    return this._state;
+  }
+
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    this._onAuthorizationUrl?.(authorizationUrl);
     const url = authorizationUrl.toString();
     if (this._noOpen) {
       console.error("\n🔐 Authorization required. Open this URL in your browser:\n");
@@ -261,6 +306,25 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     return this._pendingCode;
   }
 
+  /** CSRF state for this flow — key an external callback route by this value. */
+  get oauthState(): string {
+    return this.state();
+  }
+
+  /** Advertised redirect path — the route an external host server must expose. */
+  get callbackPath(): string {
+    return this._callbackPath;
+  }
+
+  /**
+   * Handle an OAuth redirect request forwarded from an external host server
+   * (externalCallback mode). Resolves waitForCode() and returns the page to
+   * render in the browser tab.
+   */
+  handleCallback(req: Request): Response {
+    return this._handleCallback(req);
+  }
+
   /** Discovery state captured before registration — available even when registration fails. */
   getDiscoveryState(): OAuthDiscoveryState | undefined {
     return this._discoveryState;
@@ -272,9 +336,12 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
     this._persistCache();
   }
 
-  /** Stop the local callback HTTP server. Call once auth is complete. */
+  /**
+   * Stop the local callback HTTP server. Call once auth is complete.
+   * No-op in externalCallback mode, where the host owns the server.
+   */
   stop(): void {
-    this._server.stop(true);
+    this._server?.stop(true);
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────
@@ -302,23 +369,39 @@ export class CLIBrowserOAuthProvider implements OAuthClientProvider {
   private _handleCallback(req: Request): Response {
     const url = new URL(req.url);
 
-    if (url.pathname !== "/callback") {
+    if (url.pathname !== this._callbackPath) {
       return new Response("Not found", { status: 404 });
+    }
+
+    // Subsequent callbacks on an already-settled promise are errors.
+    if (this._codeSettled) {
+      return errorPage("already_completed", "Authorization code was already received.");
+    }
+
+    // Reject a mismatched state to block CSRF / cross-flow callback delivery.
+    const returnedState = url.searchParams.get("state");
+    if (returnedState !== null && returnedState !== this._state) {
+      this._codeSettled = true;
+      this._rejectCode?.(new Error("OAuth state mismatch"));
+      return errorPage("state_mismatch", "State parameter did not match.");
     }
 
     const error = url.searchParams.get("error");
     if (error) {
       const description = url.searchParams.get("error_description") ?? "";
+      this._codeSettled = true;
       this._rejectCode?.(new Error(`OAuth error: ${error} — ${description}`));
       return errorPage(error, description);
     }
 
     const code = url.searchParams.get("code");
     if (!code) {
+      this._codeSettled = true;
       this._rejectCode?.(new Error("OAuth callback missing authorization code"));
       return errorPage("no_code", "No authorization code received.");
     }
 
+    this._codeSettled = true;
     this._resolveCode?.(code);
     return successPage();
   }
@@ -369,6 +452,16 @@ function successPage(): Response {
   return new Response(body, { status: 200, headers: { "Content-Type": "text/html" } });
 }
 
+/** Escape HTML special characters to prevent XSS from attacker-controlled strings. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function errorPage(error: string, description: string): Response {
   const body = `<!DOCTYPE html>
 <html lang="en">
@@ -406,7 +499,7 @@ function errorPage(error: string, description: string): Response {
   <div class="card">
     <span class="icon">❌</span>
     <h1>Authentication failed</h1>
-    <p><code>${error}</code>${description ? `: ${description}` : ""}</p>
+    <p><code>${escapeHtml(error)}</code>${description ? `: ${escapeHtml(description)}` : ""}</p>
   </div>
 </body>
 </html>`;

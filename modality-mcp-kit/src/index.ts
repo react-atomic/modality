@@ -17,3 +17,10 @@ export {
   type McpProxyConfig,
   type OAuthAllowAccessFn,
 } from "./util_mcp_proxy";
+export {
+  getOAuthCachePath,
+  getStoredOAuthToken,
+  clearStoredOAuthTokens,
+  DEFAULT_OAUTH_CACHE_DIR,
+  type OAuthTokenStoreOptions,
+} from "./utils/oauth-token-store";
