@@ -29,6 +29,13 @@ import type { AITool } from "modality-mcp-kit";
 import type { z } from "zod";
 import { buildCliFromTools } from "./help/cli-builder";
 import { validateCLICommandArgs } from "./help/zod-cli";
+import {
+  formatHuman,
+  formatJSON,
+  formatJSONL,
+  type CLIResult,
+  type OutputFormat,
+} from "./output";
 import type { CommandRegistry } from "./registry";
 
 /** Options for {@link createCliRunner}. */
@@ -57,8 +64,64 @@ export interface CliRunnerOptions {
    * returning 0) if one is set, otherwise prints global help and returns 1.
    */
   onEmpty?: () => number | Promise<number>;
-  /** Render a command result to stdout. Default: pretty-printed JSON. */
-  render?: (result: unknown) => void;
+}
+
+/**
+ * Detect the requested output format from argv global flags. Convention:
+ * `--jsonl` → JSONL, `--json` → pretty JSON, otherwise human-readable.
+ *
+ * Note: `--jsonl` is NOT in `DEFAULT_GLOBAL_FLAGS` — it is a legacy alias that
+ * still routes through format detection for backward compatibility, but per-command
+ * validation will reject it unless explicitly added via `extraFlags`.
+ */
+function detectFormat(argv: string[]): OutputFormat {
+  if (argv.includes("--jsonl")) return "jsonl";
+  if (argv.includes("--json")) return "json";
+  return "human";
+}
+
+/**
+ * The single result renderer — one code path that covers every shape a
+ * command (or the {@link CliRunnerOptions.aiTool}) can return. Every CLI built
+ * on this runner uses it; there is no per-consumer override:
+ *
+ *  - `string` — printed verbatim (e.g. the no-command help text); empty
+ *    strings print nothing.
+ *  - {@link CLIResult} envelope (`{ success, ... }`) — serialized for `format`
+ *    via the `output.ts` formatters. In human mode a success envelope carrying
+ *    no `message`/`result` renders to `""`, so a handler that already printed
+ *    its own output adds nothing; human-mode failures go to stderr while
+ *    JSON/JSONL always stream to stdout for machine consumers.
+ *  - any other object — best-effort JSON, compact under `--json`/`--jsonl`
+ *    and pretty in human mode so the format flag means the same on every
+ *    branch (back-compat).
+ *  - `undefined` / `null` — nothing.
+ */
+function renderCliResult(result: unknown, format: OutputFormat): void {
+  if (result === undefined || result === null) return;
+
+  if (typeof result === "string") {
+    if (result.length > 0) console.log(result);
+    return;
+  }
+
+  if (typeof result === "object" && "success" in result) {
+    const envelope = result as CLIResult;
+    const text =
+      format === "json"
+        ? formatJSON(envelope, { pretty: true })
+        : format === "jsonl"
+          ? formatJSONL(envelope)
+          : formatHuman(envelope);
+    if (text.length === 0) return;
+    if (format === "human" && envelope.success === false) console.error(text);
+    else console.log(text);
+    return;
+  }
+
+  // Non-envelope object: honor the format flag — machine modes stay on one
+  // line, human mode pretty-prints.
+  console.log(JSON.stringify(result, null, format === "human" ? 2 : undefined));
 }
 
 /** A runner returned by {@link createCliRunner}. */
@@ -81,7 +144,6 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     globalOptionsSchema,
     skipFields,
     onEmpty,
-    render,
   } = options;
 
   // `buildCliFromTools` reads aliases off each command object, so project them
@@ -94,16 +156,9 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     { cliName, tagline, skipFields, globalOptionsSchema },
   );
 
-  const renderResult =
-    render ?? ((result: unknown) => {
-      if (typeof result === "string") {
-        console.log(result);
-      } else {
-        console.log(JSON.stringify(result, null, 2));
-      }
-    });
-
   async function run(argv: string[] = process.argv.slice(2)): Promise<number> {
+    const renderResult = (result: unknown) =>
+      renderCliResult(result, detectFormat(argv));
     const [name, ...rest] = argv;
 
     if (!name) {

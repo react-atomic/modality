@@ -117,37 +117,168 @@ describe("createCliRunner.run", () => {
   });
 
   test("a successful command renders its result and returns 0", async () => {
-    const rendered: unknown[] = [];
-    const { code } = await runCapturing(
-      { ...baseOpts(), render: (r) => rendered.push(r) },
-      ["greet", "World"],
-    );
+    const { code, logs } = await runCapturing(baseOpts(), ["greet", "World"]);
     expect(code).toBe(0);
-    expect(rendered).toEqual([{ success: true, message: "hi World" }]);
+    expect(logs.join("\n")).toContain("hi World");
   });
 
   test("a command resolves via its alias", async () => {
-    const rendered: unknown[] = [];
-    const { code } = await runCapturing(
-      { ...baseOpts(), render: (r) => rendered.push(r) },
-      ["g", "World"],
-    );
+    const { code, logs } = await runCapturing(baseOpts(), ["g", "World"]);
     expect(code).toBe(0);
-    expect(rendered).toEqual([{ success: true, message: "hi World" }]);
+    expect(logs.join("\n")).toContain("hi World");
   });
 
   test("a result with success:false returns exit code 1", async () => {
-    const { code } = await runCapturing(
-      { ...baseOpts(), render: () => {} },
-      ["boom"],
-    );
+    const { code } = await runCapturing(baseOpts(), ["boom"]);
     expect(code).toBe(1);
   });
 
-  test("the default render pretty-prints JSON to stdout", async () => {
+  test("the default render prints human output to stdout", async () => {
     const { code, logs } = await runCapturing(baseOpts(), ["greet", "World"]);
     expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("hi World");
+    // Human mode renders the message, not a raw JSON envelope.
+    expect(logs.join("\n")).not.toContain('"success"');
+  });
+
+  test("the default render emits a pretty JSON envelope under --json", async () => {
+    const { code, logs } = await runCapturing(baseOpts(), ["greet", "World", "--json"]);
+    expect(code).toBe(0);
     expect(logs.join("\n")).toContain('"message": "hi World"');
+    expect(logs.join("\n")).toContain('"success": true');
+  });
+
+  test("the default render prints nothing for a bare success envelope (self-printing handler)", async () => {
+    const silent = {
+      name: "silent",
+      description: "Prints its own output",
+      inputSchema: z.object({}),
+      // Handler already wrote to stdout itself; returns only status.
+      execute: async () => ({ success: true }),
+    } as unknown as CLICommand;
+    const opts = {
+      cliName: "my-cli",
+      tagline: "My toolkit",
+      registry: createCommandRegistry([silent], {}),
+    };
+    const { code, logs } = await runCapturing(opts, ["silent"]);
+    expect(code).toBe(0);
+    expect(logs.join("")).toBe("");
+  });
+
+  test("the default render sends human-mode failures to stderr", async () => {
+    const { code, logs, errs } = await runCapturing(baseOpts(), ["boom"]);
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toContain("nope");
+    expect(logs.join("\n")).not.toContain("nope");
+  });
+
+  test("the default render streams JSON failures to stdout, not stderr", async () => {
+    const { code, logs, errs } = await runCapturing(baseOpts(), ["boom", "--json"]);
+    expect(code).toBe(1);
+    // Machine formats always go to stdout — only human failures divert to stderr.
+    expect(logs.join("\n")).toContain('"error": "nope"');
+    expect(errs.join("\n")).not.toContain("nope");
+  });
+
+  test("--json formats a non-envelope object compactly (single line)", async () => {
+    const raw = {
+      name: "raw",
+      description: "Returns a bare object with no success field",
+      inputSchema: z.object({}),
+      execute: async () => ({ data: [1, 2] }),
+    } as unknown as CLICommand;
+    const opts = {
+      cliName: "my-cli",
+      tagline: "My toolkit",
+      registry: createCommandRegistry([raw], {}),
+    };
+    const { code, logs } = await runCapturing(opts, ["raw", "--json"]);
+    expect(code).toBe(0);
+    // Compact, single-line — no pretty-print newlines in the fallback branch.
+    expect(logs.join("")).toBe('{"data":[1,2]}');
+  });
+
+  test("--jsonl is rejected as an unknown flag now that it left DEFAULT_GLOBAL_FLAGS", async () => {
+    // Regression guard: --jsonl was removed as a hardcoded global flag, so a
+    // command that does not opt in must reject it rather than silently accept.
+    const { code, errs } = await runCapturing(baseOpts(), ["greet", "World", "--jsonl"]);
+    expect(code).toBe(1);
+    expect(errs.join("\n")).toContain("Unknown flag --jsonl");
+  });
+
+  test("a command that opts into --jsonl renders a single-line JSONL envelope", async () => {
+    // Declaring `jsonl` on the schema makes --jsonl a known flag, so validation
+    // passes and detectFormat routes to the jsonl branch of renderCliResult.
+    const stream = {
+      name: "stream",
+      description: "Supports --jsonl output",
+      inputSchema: z.object({ jsonl: z.boolean().optional() }),
+      execute: async () => ({ success: true, message: "streamed", result: { id: 1 } }),
+    } as unknown as CLICommand;
+    const opts = {
+      cliName: "my-cli",
+      tagline: "My toolkit",
+      registry: createCommandRegistry([stream], {}),
+    };
+    const { code, logs } = await runCapturing(opts, ["stream", "--jsonl"]);
+    expect(code).toBe(0);
+    // formatJSONL emits the whole envelope on one line, keys in return order.
+    expect(logs.join("")).toBe('{"success":true,"message":"streamed","result":{"id":1}}');
+  });
+
+  test("--jsonl takes precedence over --json when both are present", async () => {
+    const stream = {
+      name: "stream",
+      description: "Supports --jsonl output",
+      inputSchema: z.object({ jsonl: z.boolean().optional() }),
+      execute: async () => ({ success: true, message: "streamed" }),
+    } as unknown as CLICommand;
+    const opts = {
+      cliName: "my-cli",
+      tagline: "My toolkit",
+      registry: createCommandRegistry([stream], {}),
+    };
+    const { code, logs } = await runCapturing(opts, ["stream", "--jsonl", "--json"]);
+    expect(code).toBe(0);
+    // jsonl wins: compact single line, not the pretty JSON --json would emit.
+    expect(logs.join("")).toBe('{"success":true,"message":"streamed"}');
+  });
+
+  test("a command returning undefined renders nothing and still exits 0", async () => {
+    const nada = {
+      name: "nada",
+      description: "Returns nothing",
+      inputSchema: z.object({}),
+      execute: async () => undefined,
+    } as unknown as CLICommand;
+    const opts = {
+      cliName: "my-cli",
+      tagline: "My toolkit",
+      registry: createCommandRegistry([nada], {}),
+    };
+    const { code, logs, errs } = await runCapturing(opts, ["nada"]);
+    expect(code).toBe(0);
+    expect(logs.join("")).toBe("");
+    expect(errs.join("")).toBe("");
+  });
+
+  test("human mode pretty-prints a non-envelope object", async () => {
+    const raw = {
+      name: "raw",
+      description: "Returns a bare object with no success field",
+      inputSchema: z.object({}),
+      execute: async () => ({ data: [1, 2] }),
+    } as unknown as CLICommand;
+    const opts = {
+      cliName: "my-cli",
+      tagline: "My toolkit",
+      registry: createCommandRegistry([raw], {}),
+    };
+    const { code, logs } = await runCapturing(opts, ["raw"]);
+    expect(code).toBe(0);
+    // Human mode indents the fallback branch (mirror of the --json compact test).
+    expect(logs.join("")).toBe(JSON.stringify({ data: [1, 2] }, null, 2));
   });
 
   test("getHelp() exposes global and per-command help", () => {
@@ -190,17 +321,6 @@ describe("createCliRunner.run", () => {
     expect(logs.join("\n")).toContain("my-cli");
   });
 
-  test("custom render function receives command result", async () => {
-    const results: unknown[] = [];
-    const { code } = await runCapturing(
-      { ...baseOpts(), render: (r) => results.push(r) },
-      ["greet", "Test"],
-    );
-    expect(code).toBe(0);
-    expect(results).toHaveLength(1);
-    expect(results[0]).toEqual({ success: true, message: "hi Test" });
-  });
-
   test("command with validation error shows help after warnings", async () => {
     const { code, errs, logs } = await runCapturing(baseOpts(), ["greet"]);
     expect(code).toBe(1);
@@ -230,10 +350,9 @@ describe("createCliRunner.run", () => {
   });
 
   test("a unique prefix resolves to its command", async () => {
-    const rendered: unknown[] = [];
-    const { code } = await runCapturing({ ...prefixOpts(), render: (r) => rendered.push(r) }, ["sta"]);
+    const { code, logs } = await runCapturing(prefixOpts(), ["sta"]);
     expect(code).toBe(0);
-    expect(rendered).toEqual([{ success: true, message: "started" }]);
+    expect(logs.join("\n")).toContain("started");
   });
 
   test("an ambiguous prefix errors with candidates and returns 1", async () => {
@@ -318,19 +437,19 @@ describe("createCliRunner.run — aiTool dispatch", () => {
 
   test("dispatch routes through aiTool.execute when one is supplied", async () => {
     const { aiTool, calls } = spyTool();
-    await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["greet", "World"]);
+    await runCapturing({ ...baseOpts(), aiTool }, ["greet", "World"]);
     expect(calls).toHaveLength(1);
   });
 
   test("aiTool receives the resolved command name plus validated args", async () => {
     const { aiTool, calls } = spyTool();
-    await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["greet", "World"]);
+    await runCapturing({ ...baseOpts(), aiTool }, ["greet", "World"]);
     expect(calls[0]).toMatchObject({ command: "greet", name: "World" });
   });
 
   test("aiTool receives the canonical name even when invoked by alias", async () => {
     const { aiTool, calls } = spyTool();
-    await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["g", "World"]);
+    await runCapturing({ ...baseOpts(), aiTool }, ["g", "World"]);
     expect((calls[0] as { command: string }).command).toBe("greet");
   });
 
@@ -338,7 +457,7 @@ describe("createCliRunner.run — aiTool dispatch", () => {
     const { registry, calls } = spyGreet();
     const { aiTool } = spyTool();
     await runCapturing(
-      { cliName: "my-cli", tagline: "t", registry, aiTool, render: () => {} },
+      { cliName: "my-cli", tagline: "t", registry, aiTool },
       ["greet", "World"],
     );
     expect(calls).toHaveLength(0);
@@ -346,15 +465,14 @@ describe("createCliRunner.run — aiTool dispatch", () => {
 
   test("aiTool's result drives the exit code (success:false → 1)", async () => {
     const { aiTool } = spyTool({ success: false, error: "nope" });
-    const { code } = await runCapturing({ ...baseOpts(), aiTool, render: () => {} }, ["greet", "World"]);
+    const { code } = await runCapturing({ ...baseOpts(), aiTool }, ["greet", "World"]);
     expect(code).toBe(1);
   });
 
-  test("aiTool's result is passed to render", async () => {
-    const rendered: unknown[] = [];
+  test("aiTool's result is rendered via the default renderer", async () => {
     const { aiTool } = spyTool({ success: true, message: "via tool" });
-    await runCapturing({ ...baseOpts(), aiTool, render: (r) => rendered.push(r) }, ["greet", "World"]);
-    expect(rendered).toEqual([{ success: true, message: "via tool" }]);
+    const { logs } = await runCapturing({ ...baseOpts(), aiTool }, ["greet", "World"]);
+    expect(logs.join("\n")).toContain("via tool");
   });
 
   test("empty argv defers to aiTool.execute({}) and returns 0", async () => {

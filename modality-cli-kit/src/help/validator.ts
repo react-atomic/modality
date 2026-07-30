@@ -69,7 +69,13 @@ export function fuzzySuggestion(input: string, candidates: string[]): string | n
 
 // ── Default global flags ────────────────────────────────────────────────
 
-/** Global flags accepted by all commands unless overridden. */
+/**
+ * Global flags accepted by all commands unless overridden.
+ *
+ * `--jsonl` is NOT included here — it was removed as a hardcoded global flag.
+ * Projects that still need `--jsonl` recognition should pass it via the
+ * `extraFlags` parameter of `rejectUnknownFlags` / `validateCLICommandArgs`.
+ */
 export const DEFAULT_GLOBAL_FLAGS = new Set(["--help", "-h", "--json", "--no-cache"]);
 
 // ── Known-flag extraction ─────────────────────────────────────────────────
