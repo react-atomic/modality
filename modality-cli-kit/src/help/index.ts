@@ -4,20 +4,15 @@
  * ## Quick start
  *
  * ```ts
- * import { z } from "zod";
- * import { generateHelp, generateCommandHelp } from "modality-cli-kit/help";
+ * import { getHelp } from "modality-cli-kit/help";
  *
- * const commands = [
- *   { name: "open",  summary: "Navigate to a URL" },
- *   {
- *     name: "click",
- *     summary: "Click an element",
- *     inputSchema: z.object({ selector: z.string().optional().describe("CSS selector") }),
- *   },
- * ];
+ * const commands = [ … ];
  *
- * console.log(generateHelp({ cliName: "my-cli", tagline: "My tool", commands }));
- * console.log(generateCommandHelp("my-cli", commands[1]));
+ * // Global help
+ * console.log(getHelp({ cliName: "my-cli", tagline: "My tool", commands }));
+ *
+ * // Per-command help
+ * console.log(getHelp({ cliName: "my-cli", commands, command: "click" }));
  * ```
  */
 
@@ -39,14 +34,13 @@ export {
 } from "./colors";
 
 // Types
-export type { Option, CLICommand, HelpConfig, KeyOverride } from "./types";
+export type { Option, CLICommand, HelpConfig, KeyOverride, HelpFormat, GetHelpOptions } from "./types";
 
 // Generator
 export {
-  generateHelp,
-  generateCommandHelp,
   renderCLICommand,
   renderSection,
+  getHelp,
 } from "./generator";
 
 // Formatter

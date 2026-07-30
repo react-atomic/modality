@@ -262,6 +262,26 @@ describe("createCliRunner.run", () => {
     expect(code).toBe(0);
     expect(logs.join("\n")).toContain("my-cli start");
   });
+
+  // ── Default render: string passthru ────────────────────────────────────────
+
+  test("default render passes string results through directly (not JSON-wrapped)", async () => {
+    const registry = createCommandRegistry([{
+      name: "echo",
+      description: "Echo back",
+      inputSchema: z.object({ text: z.string().describe("Text to echo") }),
+      positionalKeys: ["text"],
+      execute: async (args: { text: string }) => `You said: ${args.text}`,
+    } as unknown as CLICommand]);
+    const { code, logs } = await runCapturing(
+      { cliName: "my-cli", tagline: "t", registry },
+      ["echo", "hello"],
+    );
+    expect(code).toBe(0);
+    const output = logs.join("\n");
+    expect(output).toContain("You said: hello");
+    expect(output).not.toContain('"You said: hello"');
+  });
 });
 
 // ── aiTool (counter-script) dispatch ───────────────────────────────────────
@@ -357,5 +377,13 @@ describe("createCliRunner.run — aiTool dispatch", () => {
     const { aiTool } = spyTool({ success: false, error: "ignored" });
     const { code } = await runCapturing({ ...baseOpts(), aiTool }, []);
     expect(code).toBe(0);
+  });
+
+  test("aiTool empty-argv renders the result when using default render", async () => {
+    const { aiTool } = spyTool("plain string result");
+    const { code, logs } = await runCapturing({ ...baseOpts(), aiTool }, []);
+    expect(code).toBe(0);
+    // The default render should pass the string through directly
+    expect(logs.join("\n")).toContain("plain string result");
   });
 });

@@ -83,6 +83,39 @@ export interface CLICommand extends AITool<any, z.ZodTypeAny> {
   aliases?: string[];
 }
 
+/**
+ * Output format for help text — a subset of OutputFormat from the output module,
+ * kept here to avoid a cross-module dependency.
+ */
+export type HelpFormat = "human" | "json";
+
+/**
+ * Options for the unified {@link getHelp} function.
+ * Covers both global help and per-command help, in human or JSON format.
+ */
+export interface GetHelpOptions {
+  /** CLI binary name, e.g. "web-cli", "my-cli" */
+  cliName: string;
+  /** One-line tagline (optional — only renders in human global-help mode) */
+  tagline?: string;
+  /** All commands to document */
+  commands: CLICommand[];
+  /** Output format (default: "human") */
+  format?: HelpFormat;
+  /** When set, show help for this specific command instead of global help */
+  command?: string;
+  /** When false, commands keep their insertion order (default: true = sort) */
+  sorted?: boolean;
+  /** Global options shown in the footer / options section */
+  globalOptions?: Option[];
+  /** Global examples shown at the bottom of help */
+  globalExamples?: string[];
+  /** Footer text (e.g. "Set NO_COLOR=1 to disable colors") */
+  footer?: string;
+  /** Command-name column width (human mode only) */
+  colNameWidth?: number;
+}
+
 /** Global help page configuration */
 export interface HelpConfig {
   /** CLI binary name, e.g. "web-cli", "my-cli" */

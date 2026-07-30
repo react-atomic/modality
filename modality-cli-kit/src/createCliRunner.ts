@@ -95,7 +95,13 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
   );
 
   const renderResult =
-    render ?? ((result: unknown) => console.log(JSON.stringify(result, null, 2)));
+    render ?? ((result: unknown) => {
+      if (typeof result === "string") {
+        console.log(result);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+    });
 
   async function run(argv: string[] = process.argv.slice(2)): Promise<number> {
     const [name, ...rest] = argv;
@@ -105,7 +111,8 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       // With an aiTool but no explicit onEmpty, defer the empty invocation to
       // the tool (its no-command path is a no-op) instead of printing help.
       if (aiTool) {
-        await aiTool.execute({});
+        const result = await aiTool.execute({});
+        if (result !== undefined) renderResult(result);
         return 0;
       }
       console.log(cli.getHelp());

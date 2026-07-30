@@ -3,7 +3,7 @@
  *
  * Given a collection of tools (each with a name, description, and Zod inputSchema),
  * this function derives `CLICommand[]` and a `HelpConfig` that can be fed directly
- * to `generateHelp()`, `rejectUnknownFlags()`, and other kit functions.
+ * to `getHelp()`, `rejectUnknownFlags()`, and other kit functions.
  *
  * Per-tool CLI metadata (which schema fields are positional, command aliases,
  * usage examples, flag name overrides) can be embedded on each tool object
@@ -43,7 +43,7 @@
 import { z } from "zod";
 import type { Option, HelpConfig, CLICommand } from "./types";
 import { schemaToCliOptions, toKebab, buildKeyMap } from "./zod-cli";
-import { generateHelp, generateCommandHelp } from "./generator";
+import { getHelp } from "./generator";
 import { buildFlagRejector } from "./validator";
 
 /**
@@ -68,14 +68,14 @@ export interface BuildCliFromToolsOptions
 
 /** Result of a `buildCliFromTools` call. */
 export interface CliBuildResult {
-  /** Derived `CLICommand[]` — feed to `generateHelp()`, `rejectUnknownFlags()`, etc. */
+  /** Derived `CLICommand[]` — feed to `getHelp()`, `rejectUnknownFlags()`, etc. */
   commands: CLICommand[];
   /**
    * Alias map: alias name → canonical command name.
    * Use this to look up the real command when a user types an alias.
    */
   aliases: Record<string, string>;
-  /** Ready-to-go `HelpConfig` for `generateHelp()`. */
+  /** Ready-to-go `HelpConfig` for `getHelp()`. */
   helpConfig: HelpConfig;
   /**
    * Generate help text for one command, or global help if omitted.
@@ -102,7 +102,7 @@ export interface CliBuildResult {
  * is read from the `CLICommand` fields on each tool object.
  *
  * The returned `CliBuildResult` includes:
- * - `commands` — for use with `generateHelp()`, `rejectUnknownFlags()`, etc.
+ * - `commands` — for use with `getHelp()`, `rejectUnknownFlags()`, etc.
  * - `helpConfig` — pre-built `HelpConfig` for the global help page
  * - `getHelp()` — quick way to render help for any command
  * - `createFlagRejector()` — build a typed flag rejector
@@ -173,11 +173,9 @@ export function buildCliFromTools(
       if (command) {
         const alias = aliases[command];
         const resolved = alias ?? command;
-        const cmd = commands.find((s) => s.name === resolved);
-        if (cmd) return generateCommandHelp(cliName, cmd, globalOptions);
-        return generateCommandHelp(cliName, { name: command, summary: `Unknown command "${command}".`, execute: async () => ({}) }, globalOptions);
+        return getHelp({ ...helpConfig, command: resolved, format: "human" });
       }
-      return generateHelp(helpConfig);
+      return getHelp({ ...helpConfig, format: "human" });
     },
     createFlagRejector(extraFlags?: string[]) {
       return buildFlagRejector(commands, extraFlags);

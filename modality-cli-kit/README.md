@@ -19,7 +19,7 @@ A reusable CLI help generation system that powers both the co-chrome and use-sto
 ### Quick Start
 
 ```ts
-import { generateHelp, generateCommandHelp } from "modality-cli-kit";
+import { getHelp } from "modality-cli-kit";
 import type { CLICommand } from "modality-cli-kit";
 
 const commands: CLICommand[] = [
@@ -39,7 +39,7 @@ const commands: CLICommand[] = [
 
 // Global help
 console.log(
-  generateHelp({
+  getHelp({
     cliName: "my-cli",
     tagline: "My CLI tool",
     commands,
@@ -47,19 +47,37 @@ console.log(
 );
 
 // Per-command help
-console.log(generateCommandHelp("my-cli", commands[0]));
+console.log(getHelp({ cliName: "my-cli", commands, command: "open" }));
 ```
 
 ### API
 
 | Function                                                   | Purpose                               |
 | ---------------------------------------------------------- | ------------------------------------- |
-| `generateHelp(config)`                                     | Global help page with all commands    |
-| `generateCommandHelp(cliName, command, globalOptions?)`   | Detailed per-command help             |
+| `getHelp(options)`                                         | Unified entry: global or per-command  |
 | `renderSection(heading, entries)`                          | Render a categorized command section  |
 | `rejectUnknownFlags(command, args)`                        | Validate args against known flags     |
 | `knownFlags(command, extraFlags?)`                         | Extract known flag set                |
 | `levenshtein(a, b)`                                        | Edit distance for fuzzy flag matching |
+
+#### `getHelp(options)` Options
+
+```ts
+interface GetHelpOptions {
+  cliName: string;           // CLI binary name, e.g. "my-cli"
+  tagline?: string;          // One-line description (global help only)
+  commands: CLICommand[];    // All commands to document
+  format?: "human" | "json"; // Output format (default: "human")
+  command?: string;          // Show help for a specific command by name
+  sorted?: boolean;          // Sort commands alphabetically (default: true)
+  globalOptions?: Option[];  // Global flags shown in footer
+  globalExamples?: string[]; // Global usage examples
+  footer?: string;           // Footer text (e.g. "Set NO_COLOR=1 …")
+  colNameWidth?: number;     // Command-name column width
+}
+```
+
+> `commands` (plural, required) is the full list of available commands. `command` (singular, optional) picks one from that list to show detailed help for.
 
 ### Color Helpers
 

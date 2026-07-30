@@ -1,9 +1,9 @@
 /**
  * CLI help text generator — composable, reusable across CLIs.
  *
- * Two output modes:
- *   1. **Global help** (`generateHelp`) — lists all commands with one-liners
- *   2. **Per-command help** (`generateCommandHelp`) — detailed flags, usage, examples
+ * Public API: {@link getHelp} is the unified entry point for all help output.
+ *
+ * Internal helpers render global and per-command human-formatted help.
  */
 
 import { z } from "zod";
@@ -11,7 +11,7 @@ import * as c from "./colors";
 import { padName, padVisible, flagPad, Lines, DEFAULT_COL_NAME_WIDTH } from "./formatter";
 import { schemaToCliOptions, buildKeyMap } from "./zod-cli";
 import { optionFlags } from "./validator";
-import type { CLICommand, HelpConfig, Option } from "./types";
+import type { CLICommand, HelpConfig, Option, GetHelpOptions, HelpFormat } from "./types";
 
 /**
  * Resolve a command's options + positionals for display.
@@ -124,7 +124,7 @@ export function renderCLICommand(
  *   web-cli open https://example.com
  * ```
  */
-export function generateHelp(config: HelpConfig): string {
+function generateHelp(config: HelpConfig): string {
   const {
     cliName,
     tagline,
@@ -194,7 +194,7 @@ export function generateHelp(config: HelpConfig): string {
 // ── Command-specific help ──────────────────────────────────────────────────
 
 /**
- * Generate detailed help for a single CLI command.
+ * Generate detailed help for a single CLI command (internal — use {@link getHelp}).
  *
  * ```text
  * web-cli open — Navigate to a URL
@@ -213,7 +213,7 @@ export function generateHelp(config: HelpConfig): string {
  * @param command       The CLICommand metadata
  * @param globalOptions Optional global options to append to the options list
  */
-export function generateCommandHelp(
+function generateCommandHelp(
   cliName: string,
   command: CLICommand,
   globalOptions?: Option[],
@@ -273,6 +273,7 @@ export function generateCommandHelp(
       out.push(renderOption({ flag: "--help, -h", desc: "Show this help message" }, false));
     }
     out.push("");
+    out.push("");
   }
 
   if (command.examples && command.examples.length > 0) {
@@ -310,4 +311,119 @@ export function renderSection(
     lines.push(`  ${col}  ${c.dim(entry.desc)}`);
   }
   return lines.flush();
+}
+
+// ── Unified help (human + JSON) ──────────────────────────────────────────────
+
+/**
+ * Build a plain-object representation of a single command, suitable for
+ * both JSON serialization and programmatic introspection.
+ */
+function commandToJSON(
+  cmd: CLICommand,
+) {
+  const { options, positionals } = cliSurface(cmd);
+
+  const obj: Record<string, unknown> = {
+    name: cmd.name,
+    summary: cmd.summary ?? cmd.description ?? "",
+  };
+
+  if (cmd.aliases && cmd.aliases.length > 0) {
+    obj.aliases = cmd.aliases;
+  }
+  if (options.length > 0) {
+    obj.options = options;
+  }
+  if (positionals.length > 0) {
+    obj.positionals = positionals;
+  }
+  if (cmd.usage && cmd.usage.length > 0) {
+    obj.usage = cmd.usage;
+  }
+  if (cmd.examples && cmd.examples.length > 0) {
+    obj.examples = cmd.examples;
+  }
+
+  return obj;
+}
+
+/**
+ * Render help as a JSON string (structured command metadata).
+ */
+function getHelpJSON(options: GetHelpOptions): string {
+  const { cliName, command, commands, globalOptions, globalExamples, sorted } = options;
+
+  if (command) {
+    const cmd = commands.find((c) => c.name === command);
+    if (!cmd) {
+      return JSON.stringify({ error: `Unknown command: "${command}"` }, null, 2);
+    }
+    return JSON.stringify({
+      cliName,
+      command: commandToJSON(cmd),
+    }, null, 2);
+  }
+
+  const list = sorted !== false
+    ? [...commands].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+    : commands;
+
+  const payload: Record<string, unknown> = {
+    cliName,
+    commands: list.map((cmd) => commandToJSON(cmd)),
+  };
+
+  if (globalExamples?.length) {
+    payload.globalExamples = globalExamples;
+  }
+  if (globalOptions && globalOptions.length > 0) {
+    payload.globalOptions = globalOptions;
+  }
+
+  return JSON.stringify(payload, null, 2);
+}
+
+/**
+ * Unified help entry point — generate help text in human-readable or JSON format.
+ *
+ * ## Usage
+ *
+ * ```ts
+ * import { getHelp } from "modality-cli-kit";
+ *
+ * // Global help
+ * console.log(getHelp({ cliName: "my-cli", commands }));
+ *
+ * // Per-command help
+ * console.log(getHelp({ cliName: "my-cli", commands, command: "open" }));
+ *
+ * // JSON format
+ * console.log(getHelp({ cliName: "my-cli", commands, format: "json" }));
+ * ```
+ */
+export function getHelp(options: GetHelpOptions): string {
+  const { command, format = "human" } = options;
+
+  if (format === "json") {
+    return getHelpJSON(options);
+  }
+
+  // ── human format ──────────────────────────────────────────────────────────
+  if (command) {
+    const cmd = options.commands.find((c) => c.name === command);
+    if (!cmd) return `Unknown command: "${command}"\n`;
+    return generateCommandHelp(options.cliName, cmd, options.globalOptions);
+  }
+
+  return generateHelp({
+    cliName: options.cliName,
+    tagline: options.tagline ?? "",
+    commands: options.commands,
+    sorted: options.sorted,
+    globalOptions: options.globalOptions,
+    globalExamples: options.globalExamples,
+    footer: options.footer,
+    colNameWidth: options.colNameWidth,
+  });
 }
