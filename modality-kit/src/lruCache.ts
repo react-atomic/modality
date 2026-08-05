@@ -12,7 +12,7 @@ export class LruCache<T> {
 
   public get(key: string): T | undefined {
     const value = this._values.get(key);
-    if (value) {
+    if (value !== undefined) {
       // move to end of map
       this._values.delete(key);
       this._values.set(key, value);
@@ -21,7 +21,8 @@ export class LruCache<T> {
   }
 
   public set(key: string, value: T): void {
-    if (this.size() >= this.max) {
+    // Only a finite max evicts — Infinity (or NaN) means unbounded.
+    if (Number.isFinite(this.max) && this.size() >= this.max) {
       const itemsToEvictCount = Math.max(1, Math.floor(this.max * 0.25));
       const keys = this._values.keys();
       let count = 0;

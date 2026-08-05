@@ -86,4 +86,25 @@ describe("LruCache", () => {
     expect(cache.has("key50")).toBe(true);
     expect(cache.has("key149")).toBe(true);
   });
+
+  test("getting an entry with a falsy value still makes it most recently used", () => {
+    const cache = new LruCache<number>(3);
+    cache.set("a", 0);
+    cache.set("b", 1);
+    cache.set("c", 2);
+    expect(cache.get("a")).toBe(0); // 0 is falsy but present — must still touch
+    cache.set("d", 3); // evicts "b", not "a"
+    expect(cache.get("a")).toBe(0);
+    expect(cache.get("b")).toBeUndefined();
+  });
+
+  test("an unbounded cache (max = Infinity) never evicts", () => {
+    const cache = new LruCache<number>(Infinity);
+    for (let i = 0; i < 150; i++) {
+      cache.set(`key${i}`, i);
+    }
+    expect(cache.has("key0")).toBe(true);
+    expect(cache.has("key149")).toBe(true);
+    expect(cache.size()).toBe(150);
+  });
 });

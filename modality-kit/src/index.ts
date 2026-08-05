@@ -46,7 +46,7 @@ export { LruCache } from "./lruCache";
 export { SimpleCache } from "./simple-cache";
 export { isTestEnvironment } from "./isTestEnvironment";
 
-export type { SimpleCacheOptions } from "./simple-cache";
+export type { SimpleCacheOptions, GetOrLoadOptions } from "./simple-cache";
 export type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 export { recursiveScanForFiles, type ScannedFile } from "./recursiveScanForFiles";
