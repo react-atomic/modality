@@ -922,3 +922,123 @@ describe("createFlatCommandSchema", () => {
     expect(schema.parse({ command: "" })).toEqual({ command: "" });
   });
 });
+
+describe("union boolean|string flags", () => {
+  // z.union([z.boolean(), z.string()]) — a flag that can be used bare
+  // (`--pin` → true, the boolean member) or with a value
+  // (`--pin 44460:short` → "44460:short", the string member).
+  const schema = z.object({
+    pin: z.union([z.boolean(), z.string()]).optional(),
+  });
+
+  test("bare --pin → true (boolean member)", () => {
+    const { data, warnings } = parseCliArgs(schema, ["--pin"]);
+    expect(warnings).toEqual([]);
+    expect(data.pin).toBe(true);
+  });
+
+  test("--pin with a value → raw string (string member)", () => {
+    const { data, warnings } = parseCliArgs(schema, ["--pin", "44460:short"]);
+    expect(warnings).toEqual([]);
+    expect(data.pin).toBe("44460:short");
+  });
+
+  test("inline --pin=value works", () => {
+    const { data } = parseCliArgs(schema, ["--pin=auto"]);
+    expect(data.pin).toBe("auto");
+  });
+
+  test("--pin followed by another flag: bare form wins, next flag stays a flag", () => {
+    // The boolean branch does NOT consume the next token — `--human` must not
+    // be swallowed as the pin value (the classic string-flag trap).
+    const multi = z.object({
+      pin: z.union([z.boolean(), z.string()]).optional(),
+      human: z.boolean().optional(),
+    });
+    const { data, warnings } = parseCliArgs(multi, ["--pin", "--human"]);
+    expect(warnings).toEqual([]);
+    expect(data.pin).toBe(true);
+    expect(data.human).toBe(true);
+  });
+
+  test("absent → undefined (pinning stays off)", () => {
+    const { data, warnings } = parseCliArgs(schema, []);
+    expect(warnings).toEqual([]);
+    expect(data.pin).toBeUndefined();
+  });
+
+  test("a plain boolean flag keeps its value coercion (union does not change it)", () => {
+    const boolSchema = z.object({ json: z.boolean().optional() });
+    expect(parseCliArgs(boolSchema, ["--json"]).data.json).toBe(true);
+    expect(parseCliArgs(boolSchema, ["--json=false"]).data.json).toBe(false);
+  });
+
+  test("a value-only string flag still requires a value", () => {
+    const strSchema = z.object({ config: z.string().optional() });
+    const { warnings } = parseCliArgs(strSchema, ["--config"]);
+    expect(warnings[0]).toContain("requires a value");
+  });
+
+  test("--pin false → string \"false\", NOT boolean false (union skips the boolean regex)", () => {
+    // The boolean inline-regex (false/0/no/off) is deliberately NOT applied to
+    // unions — a value like "false" should reach the string member.
+    const { data, warnings } = parseCliArgs(schema, ["--pin", "false"]);
+    expect(warnings).toEqual([]);
+    expect(data.pin).toBe("false");
+  });
+
+  test("nested union with a boolean member still accepts the bare form", () => {
+    const nested = z.object({
+      pin: z.union([z.union([z.boolean(), z.string()]), z.number()]).optional(),
+    });
+    expect(parseCliArgs(nested, ["--pin"]).data.pin).toBe(true);
+    expect(parseCliArgs(nested, ["--pin", "abc"]).data.pin).toBe("abc");
+  });
+});
+
+describe("value flags do not swallow flags, but keep negative numbers", () => {
+  test("--port --verbose: --verbose is NOT swallowed; clear error instead", () => {
+    const schema = z.object({ port: z.coerce.number().optional(), verbose: z.boolean().optional() });
+    const { data, warnings } = parseCliArgs(schema, ["--port", "--verbose"]);
+    expect(warnings[0]).toContain("requires a value");
+    // The flag token survives to be parsed as its own flag.
+    expect(data.verbose).toBe(true);
+    expect(data.port).toBeUndefined();
+  });
+
+  test("--offset -5: a negative number is a VALUE, not a flag", () => {
+    const schema = z.object({ offset: z.coerce.number().optional() });
+    const { data, warnings } = parseCliArgs(schema, ["--offset", "-5"]);
+    expect(warnings).toEqual([]);
+    expect(data.offset).toBe(-5);
+  });
+
+  test("--ratio -0.5: negative decimals are values too", () => {
+    const schema = z.object({ ratio: z.coerce.number().optional() });
+    const { data } = parseCliArgs(schema, ["--ratio", "-0.5"]);
+    expect(data.ratio).toBe(-0.5);
+  });
+
+  test("--port -v: a single-dash short flag is not swallowed either", () => {
+    const schema = z.object({ port: z.coerce.number().optional(), v: z.boolean().optional() });
+    const { data, warnings } = parseCliArgs(schema, ["--port", "-v"]);
+    expect(warnings[0]).toContain("requires a value");
+    expect(data.v).toBe(true);
+  });
+
+  test("union branch: --pin -5 consumes the negative value; --pin --human stays bare", () => {
+    const schema = z.object({ pin: z.union([z.boolean(), z.string()]).optional(), human: z.boolean().optional() });
+    const valued = parseCliArgs(schema, ["--pin", "-5"]);
+    expect(valued.data.pin).toBe("-5");
+    const bare = parseCliArgs(schema, ["--pin", "--human"]);
+    expect(bare.data.pin).toBe(true);
+    expect(bare.data.human).toBe(true);
+  });
+
+  test("--ratio -.5: a leading-dot negative decimal is a value too", () => {
+    const schema = z.object({ ratio: z.coerce.number().optional() });
+    const { data, warnings } = parseCliArgs(schema, ["--ratio", "-.5"]);
+    expect(warnings).toEqual([]);
+    expect(data.ratio).toBe(-0.5);
+  });
+});

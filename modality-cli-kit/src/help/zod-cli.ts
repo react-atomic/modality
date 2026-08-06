@@ -29,20 +29,58 @@ import { fuzzySuggestion, DEFAULT_GLOBAL_FLAGS } from "./validator";
 // ── Schema introspection helpers ─────────────────────────────────────
 
 /**
+ * Peel one wrapper layer (Optional, Default, Nullable, Effects, Coerced) off
+ * a schema via its public `.unwrap()` method, or null when the schema is a
+ * leaf that exposes no `.unwrap()`.
+ */
+function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny | null {
+  const unwrap = (schema as { unwrap?: () => z.ZodTypeAny }).unwrap;
+  return typeof unwrap === "function" ? unwrap.call(schema) : null;
+}
+
+/**
  * Check if a Zod schema is ultimately a boolean type, unwrapping
- * Optional, Default, and Nullable wrappers.
- *
- * Uses Zod's `instanceof` check at the leaf level and the public `.unwrap()`
- * method to peel wrapper types one layer at a time. Leaf schemas don't expose
- * `.unwrap()`, which terminates the recursion.
+ * Optional, Default, and Nullable wrappers via {@link unwrapSchema}.
  */
 function isBooleanSchema(schema: z.ZodTypeAny): boolean {
   if (schema instanceof z.ZodBoolean) return true;
 
-  const unwrap = (schema as { unwrap?: () => z.ZodTypeAny }).unwrap;
-  if (typeof unwrap === "function") return isBooleanSchema(unwrap.call(schema));
+  const inner = unwrapSchema(schema);
+  return inner !== null && isBooleanSchema(inner);
+}
 
-  return false;
+/**
+ * True when a token looks like a CLI flag rather than a value, used when
+ * deciding whether to consume the token AFTER a flag as that flag's value.
+ *
+ * - `--verbose`, `--no-cache` → long flags
+ * - `-v`, `-h` → short flags (single dash + non-digit)
+ * - `-5`, `-0.5`, `-.5` → negative-number VALUES, not flags — so
+ *   `--offset -5` keeps working while `--port --verbose` no longer swallows
+ *   `--verbose` as the port value.
+ */
+function looksLikeFlag(token: string): boolean {
+  if (!token.startsWith("-")) return false;
+  if (token.startsWith("--")) return true;
+  // Single dash: -5 / -0.5 / -.5 are values; -v / -h are short flags.
+  return !/^-[\d.]/.test(token);
+}
+
+/**
+ * True when a flag can be set by appearing bare (`--flag`) — either a pure
+ * boolean(-ish) schema, or a union containing a boolean member such as
+ * `z.union([z.boolean(), z.string()])` where the boolean member makes the
+ * bare form valid (`--pin` alone → true) while a value reaches the string
+ * member (`--pin 44460:short`).
+ */
+function acceptsBooleanSchema(schema: z.ZodTypeAny): boolean {
+  if (schema instanceof z.ZodBoolean) return true;
+  if (schema instanceof z.ZodUnion) {
+    return (schema.options as z.ZodTypeAny[]).some(acceptsBooleanSchema);
+  }
+
+  const inner = unwrapSchema(schema);
+  return inner !== null && acceptsBooleanSchema(inner);
 }
 
 // ── Zod schema inference from Option definitions ──────────────────────
@@ -177,19 +215,35 @@ export function parseCliArgs<T extends z.ZodRawShape>(
       continue;
     }
 
-    // Determine if the schema expects a boolean
+    // Determine if the schema expects a boolean — or accepts a bare flag via a
+    // boolean union member (e.g. z.union([z.boolean(), z.string()])).
     const fieldSchema = schema.shape[key]! as z.ZodTypeAny;
     const isBoolean = isBooleanSchema(fieldSchema);
+
+    // Consume the next token as this flag's value, but only when it is not
+    // itself a flag — `--port --verbose` must not swallow `--verbose` into
+    // port, while negative numbers (-5, -0.5) still count as values (see
+    // looksLikeFlag). Boolean flags never consume a value token.
+    if (!isBoolean && value === undefined) {
+      const next = args[i + 1];
+      if (next !== undefined && !looksLikeFlag(next)) {
+        value = args[++i];
+      }
+    }
 
     if (isBoolean) {
       // Inline `--flag=false/0/no/off` disables; bare `--flag` (or any other
       // value) enables. Without this, `--json=false` would wrongly set true.
       parsed[key] = value === undefined ? true : !/^(false|0|no|off)$/i.test(value);
+    } else if (acceptsBooleanSchema(fieldSchema)) {
+      // Union with a boolean member (e.g. z.union([z.boolean(), z.string()])).
+      // Optional-value semantics: `--flag` bare (next token is another flag or
+      // nothing) → true, the boolean member. `--flag <value>` (next token is
+      // not a flag) → the raw value, the string member. `--flag=value` always
+      // wins. The boolean regex is deliberately NOT applied — "false" as a
+      // value should reach the string branch.
+      parsed[key] = value ?? true;
     } else {
-      // Consume next arg as value (if not already provided via =)
-      if (value === undefined) {
-        value = args[++i];
-      }
       if (value === undefined) {
         warnings.push(`Flag --${key} requires a value.`);
         continue;
