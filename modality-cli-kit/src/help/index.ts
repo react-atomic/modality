@@ -67,6 +67,8 @@ export {
 
 // Zod CLI
 export {
+  autoDefault,
+  optionalValueFlag,
   inferOptionType,
   schemaToCliOptions,
   toKebab,

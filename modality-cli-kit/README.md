@@ -13,6 +13,7 @@ A reusable CLI help generation system that powers both the co-chrome and use-sto
 - **Global help** — Lists all commands with one-line summaries
 - **Per-command help** — Detailed flags, usage, and examples per command
 - **Flag validation** — Rejects unknown flags with fuzzy-match suggestions
+- **Optional-value flags** — One flag can be used bare (`--pin`) or with a value (`--pin 44460`)
 - **Semantic helpers** — `cmd()`, `header()`, `opt()`, `arg()`, `dim()`, `example()`, etc.
 - **Zero runtime dependencies** — Pure TypeScript
 
@@ -59,6 +60,8 @@ console.log(getHelp({ cliName: "my-cli", commands, command: "open" }));
 | `rejectUnknownFlags(command, args)`                        | Validate args against known flags     |
 | `knownFlags(command, extraFlags?)`                         | Extract known flag set                |
 | `levenshtein(a, b)`                                        | Edit distance for fuzzy flag matching |
+| `optionalValueFlag(whenBare, whenOff?)`                    | Schema for a flag usable bare OR with a value |
+| `autoDefault(whenBare, whenOff?)`                          | The `.transform()` behind it, for custom unions |
 
 #### `getHelp(options)` Options
 
@@ -78,6 +81,63 @@ interface GetHelpOptions {
 ```
 
 > `commands` (plural, required) is the full list of available commands. `command` (singular, optional) picks one from that list to show detailed help for.
+
+### Optional-Value Flags
+
+A flag's Zod type decides how argv is parsed:
+
+| Shape | Schema | `--flag` alone | `--flag x` |
+|---|---|---|---|
+| Boolean switch | `z.boolean().optional()` | `true` | next token NOT consumed |
+| Required value | `z.string()` / `z.coerce.number()` | error: *requires a value* | `"x"` / `x` |
+| **Optional value** | `optionalValueFlag("auto")` | `"auto"` | `"x"` |
+
+```ts
+import { optionalValueFlag } from "modality-cli-kit";
+
+const Args = z.object({
+  pin: optionalValueFlag("auto").describe("bare = auto-pick; or pass a level"),
+});
+
+// --pin          → "auto"      (whenBare)
+// --pin 44460    → "44460"
+// --pin=noauto   → "noauto"
+// --no-pin       → ""          (whenOff; override: optionalValueFlag("auto", "none"))
+// (absent)       → undefined   (never invents a value)
+```
+
+It expands to `z.union([z.boolean(), z.string()]).optional().transform(autoDefault(whenBare, whenOff))`.
+The **boolean member** is what makes the bare form parse; the transform folds it away so handlers
+receive `string | undefined` and never `true`.
+
+**Do not use `.default()` for this.** A Zod default fires when the flag is ABSENT, which turns the
+feature on for every invocation that never mentioned it — a different thing from "given without a
+value". Absent must stay `undefined` so a handler can tell "not requested" from "requested with
+defaults".
+
+#### Parser rules
+
+- A bare optional-value flag **does not consume the next token when it looks like a flag** —
+  `--pin --human` parses as `pin: "auto"` + `human: true`.
+- **Negative numbers are values**: `--offset -5` → `-5`, while `--offset --verbose` errors.
+- `--flag=value` always wins over the next-token rule.
+- These rules apply to every value-taking flag, not just optional-value ones.
+
+#### `autoDefault` for custom unions
+
+`optionalValueFlag` hardcodes a free-string value member. When the value side needs its own schema,
+build the union yourself and reuse the transform:
+
+```ts
+mode: z.union([z.boolean(), z.enum(["fast", "slow"])])
+  .optional()
+  .transform(autoDefault("fast")),
+// --mode → "fast" · --mode slow → "slow" · --mode bogus → warning `mode: Invalid input`
+```
+
+Caveat: the union validates the **input**, so the transform's output is not re-checked — `--no-mode`
+yields `whenOff` (`""`) even though it is not an enum member. Pass a valid member as the second
+argument when the off-value must satisfy the same constraint.
 
 ### Color Helpers
 

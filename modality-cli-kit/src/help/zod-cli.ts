@@ -29,13 +29,26 @@ import { fuzzySuggestion, DEFAULT_GLOBAL_FLAGS } from "./validator";
 // ── Schema introspection helpers ─────────────────────────────────────
 
 /**
- * Peel one wrapper layer (Optional, Default, Nullable, Effects, Coerced) off
- * a schema via its public `.unwrap()` method, or null when the schema is a
- * leaf that exposes no `.unwrap()`.
+ * Peel one wrapper layer (Optional, Default, Nullable) off a schema, or null
+ * when the schema is a leaf with nothing left to peel.
+ *
+ * Two wrapper families need handling:
+ * - `.optional()` / `.default()` / `.nullable()` expose the public `.unwrap()`.
+ * - `.transform()` produces a `ZodPipe` whose `.in` is the schema BEFORE the
+ *   transform. Flag inspection must follow `.in`: the transform only reshapes
+ *   the OUTPUT, so `z.union([z.boolean(), z.string()]).optional()
+ *   .transform(v => v === true ? "auto" : v)` is still a bare-capable flag
+ *   (`--pin` alone parses as true, then the transform maps it to "auto").
  */
 function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny | null {
   const unwrap = (schema as { unwrap?: () => z.ZodTypeAny }).unwrap;
-  return typeof unwrap === "function" ? unwrap.call(schema) : null;
+  if (typeof unwrap === "function") return unwrap.call(schema);
+
+  if (schema instanceof z.ZodPipe) {
+    return schema.in as z.ZodTypeAny;
+  }
+
+  return null;
 }
 
 /**
@@ -81,6 +94,64 @@ function acceptsBooleanSchema(schema: z.ZodTypeAny): boolean {
 
   const inner = unwrapSchema(schema);
   return inner !== null && acceptsBooleanSchema(inner);
+}
+
+// ── Bare-capable flag helpers ─────────────────────────────────────────
+
+/**
+ * `.transform()` body for a bare-capable flag — one that may appear alone
+ * (`--pin`) or carry a value (`--pin 44460:short`).
+ *
+ * Such a flag is declared as `z.union([z.boolean(), z.string()])`, which the
+ * parser fills with `true` for the bare form. That leaves every handler to
+ * repeat the same "true means X" mapping. Folding it into the schema instead
+ * gives one output type (`string | undefined`) to CLI, MCP and tests alike:
+ *
+ * ```ts
+ * pin: z.union([z.boolean(), z.string()])
+ *   .optional()
+ *   .transform(autoDefault("auto"))
+ *   .describe("...")
+ * // --pin            → "auto"     (bare → whenBare)
+ * // --pin 44460      → "44460"    (values pass through untouched)
+ * // --no-pin         → ""         (false → whenOff, i.e. "not requested")
+ * // (flag absent)    → undefined
+ * ```
+ *
+ * @param whenBare  value the bare flag stands for (e.g. "auto")
+ * @param whenOff   value for an explicit `false` (`--no-<flag>`, or an MCP
+ *                  caller passing `false`); defaults to the empty string so
+ *                  downstream parsers read it as "nothing requested"
+ */
+export function autoDefault(whenBare: string, whenOff = "") {
+  return (v: boolean | string | undefined): string | undefined =>
+    typeof v === "boolean" ? (v ? whenBare : whenOff) : v;
+}
+
+/**
+ * A flag whose value is OPTIONAL: usable bare (`--pin`), with a value
+ * (`--pin 44460:short`), or negated (`--no-pin`) — the whole shape in one call.
+ *
+ * ```ts
+ * const Args = z.object({
+ *   pin: optionalValueFlag("auto").describe("釘住價位…"),
+ * });
+ * // --pin          → "auto"      bare form stands for whenBare
+ * // --pin 44460    → "44460"     values pass through
+ * // --no-pin       → ""          (whenOff)
+ * // (absent)       → undefined   never invents a value
+ * ```
+ *
+ * Equivalent to `z.union([z.boolean(), z.string()]).optional()
+ * .transform(autoDefault(whenBare, whenOff))`: the boolean member is what makes
+ * the bare form parse (see {@link parseCliArgs}), and the transform folds it
+ * away so handlers only ever see `string | undefined`.
+ */
+export function optionalValueFlag(whenBare: string, whenOff = "") {
+  return z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform(autoDefault(whenBare, whenOff));
 }
 
 // ── Zod schema inference from Option definitions ──────────────────────
@@ -325,6 +396,14 @@ function analyzeZodField(field: z.ZodTypeAny): FieldAnalysis {
     }
     if (current instanceof z.ZodNullable) {
       current = current.unwrap() as unknown as z.ZodTypeAny;
+      continue;
+    }
+    if (current instanceof z.ZodPipe) {
+      // `.transform()` — classify by the INPUT schema. The transform only
+      // reshapes the output, and the optional/default wrappers sit inside it,
+      // so peeling here keeps `isOptional` (and thus help's required flag)
+      // honest instead of falling through to the unknown-type fallback.
+      current = current.in as z.ZodTypeAny;
       continue;
     }
     break;

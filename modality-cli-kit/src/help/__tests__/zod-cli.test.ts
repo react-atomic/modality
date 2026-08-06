@@ -1,6 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { z } from "zod";
 import {
+  autoDefault,
+  optionalValueFlag,
   inferOptionType,
   parseCliArgs,
   validateCLICommandArgs,
@@ -13,6 +15,7 @@ import {
 } from "../zod-cli";
 import type { Option, CLICommand } from "../types";
 import { makeCmd } from "./helpers";
+import * as helpIndex from "../index";
 
 // ── inferOptionType ──────────────────────────────────────────────────
 
@@ -1040,5 +1043,166 @@ describe("value flags do not swallow flags, but keep negative numbers", () => {
     const { data, warnings } = parseCliArgs(schema, ["--ratio", "-.5"]);
     expect(warnings).toEqual([]);
     expect(data.ratio).toBe(-0.5);
+  });
+});
+
+describe("transformed flags (.transform() → ZodPipe)", () => {
+  // The `--pin` shape: bare-capable union whose boolean member is normalized to
+  // a string by the schema itself, so handlers never see `true`.
+  const pinSchema = z.union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => (v === true ? "auto" : v))
+    .describe("釘住價位");
+  const schema = z.object({ pin: pinSchema, human: z.boolean().optional() });
+  const boolPipe = z.object({ loud: z.boolean().optional().transform((v) => v ?? false) });
+
+  test("bare --pin still parses (the transform does not hide the boolean member)", () => {
+    const { data, warnings } = parseCliArgs(schema, ["--pin"]);
+    expect(warnings).toEqual([]);
+    expect(data.pin).toBe("auto");  // transform mapped true → "auto"
+  });
+
+  test("--pin <value> keeps the raw string through the transform", () => {
+    const { data } = parseCliArgs(schema, ["--pin", "44460:short"]);
+    expect(data.pin).toBe("44460:short");
+  });
+
+  test("--pin --human: still bare, next flag not swallowed", () => {
+    const { data } = parseCliArgs(schema, ["--pin", "--human"]);
+    expect(data.pin).toBe("auto");
+    expect(data.human).toBe(true);
+  });
+
+  test("absent → undefined (transform leaves it alone)", () => {
+    expect(parseCliArgs(schema, []).data.pin).toBeUndefined();
+  });
+
+  test("help metadata survives the pipe: optional, described, not required", () => {
+    const { options } = schemaToCliOptions(z.object({ pin: pinSchema }));
+    expect(options[0]!.required).toBe(false);
+    expect(options[0]!.desc).toBe("釘住價位");
+  });
+
+  test("a transformed pure boolean still reads as a boolean flag", () => {
+    const { data, warnings } = parseCliArgs(boolPipe, ["--loud"]);
+    expect(warnings).toEqual([]);
+    expect(data.loud).toBe(true);
+  });
+
+  test("inline --loud=false disables a transformed boolean pipe", () => {
+    const { data } = parseCliArgs(boolPipe, ["--loud=false"]);
+    expect(data.loud).toBe(false);
+  });
+});
+
+describe("autoDefault — bare-capable flag transform", () => {
+  const schema = z.object({
+    pin: z.union([z.boolean(), z.string()]).optional().transform(autoDefault("auto")),
+  });
+
+  test("bare flag → the whenBare value", () => {
+    expect(parseCliArgs(schema, ["--pin"]).data.pin).toBe("auto");
+  });
+
+  test("values pass through untouched", () => {
+    expect(parseCliArgs(schema, ["--pin", "44460:short"]).data.pin).toBe("44460:short");
+    expect(parseCliArgs(schema, ["--pin=noauto"]).data.pin).toBe("noauto");
+  });
+
+  test("--no-<flag> → whenOff (empty string by default)", () => {
+    expect(parseCliArgs(schema, ["--no-pin"]).data.pin).toBe("");
+  });
+
+  test("absent stays undefined — the transform must not invent a value", () => {
+    expect(parseCliArgs(schema, []).data.pin).toBeUndefined();
+  });
+
+  test("whenOff is overridable", () => {
+    const off = z.object({
+      mode: z.union([z.boolean(), z.string()]).optional().transform(autoDefault("auto", "none")),
+    });
+    expect(parseCliArgs(off, ["--no-mode"]).data.mode).toBe("none");
+    expect(parseCliArgs(off, ["--mode"]).data.mode).toBe("auto");
+  });
+
+  test("used directly it is a plain pure function", () => {
+    const f = autoDefault("auto");
+    expect(f(true)).toBe("auto");
+    expect(f(false)).toBe("");
+    expect(f("x")).toBe("x");
+    expect(f(undefined)).toBeUndefined();
+  });
+
+  test("custom whenOff applies in direct use too", () => {
+    const f = autoDefault("auto", "none");
+    expect(f(true)).toBe("auto");
+    expect(f(false)).toBe("none");
+  });
+});
+
+describe("optionalValueFlag — one-call bare-capable flag", () => {
+  const schema = z.object({
+    pin: optionalValueFlag("auto").describe("釘住價位"),
+    human: z.boolean().optional(),
+  });
+
+  test("covers the whole matrix in one declaration", () => {
+    expect(parseCliArgs(schema, ["--pin"]).data.pin).toBe("auto");
+    expect(parseCliArgs(schema, ["--pin", "44460:short"]).data.pin).toBe("44460:short");
+    expect(parseCliArgs(schema, ["--pin=auto:6"]).data.pin).toBe("auto:6");
+    expect(parseCliArgs(schema, ["--no-pin"]).data.pin).toBe("");
+    expect(parseCliArgs(schema, []).data.pin).toBeUndefined();
+  });
+
+  test("bare form does not swallow the next flag", () => {
+    const { data } = parseCliArgs(schema, ["--pin", "--human"]);
+    expect(data.pin).toBe("auto");
+    expect(data.human).toBe(true);
+  });
+
+  test("help sees an optional, described, value-taking flag", () => {
+    const { options } = schemaToCliOptions(z.object({ pin: optionalValueFlag("auto").describe("釘住價位") }));
+    expect(options[0]!.flag).toBe("--pin");
+    expect(options[0]!.required).toBe(false);
+    expect(options[0]!.desc).toBe("釘住價位");
+  });
+
+  test("whenOff is forwarded to autoDefault", () => {
+    const s = z.object({ mode: optionalValueFlag("auto", "none") });
+    expect(parseCliArgs(s, ["--no-mode"]).data.mode).toBe("none");
+  });
+});
+
+describe("schemaToCliOptions through a pipe (.in classification)", () => {
+  test("a pipe WITHOUT .optional() is required in help", () => {
+    const { options } = schemaToCliOptions(
+      z.object({
+        pin: z.union([z.boolean(), z.string()]).transform((v) => (v === true ? "auto" : v)),
+      }),
+    );
+    expect(options[0]!.required).toBe(true);
+  });
+
+  test("a transformed enum keeps its enumValues", () => {
+    const { options } = schemaToCliOptions(
+      z.object({ mode: z.enum(["fast", "slow"]).transform((s) => s.toUpperCase()) }),
+    );
+    expect(options[0]!.type).toBe("enum");
+    expect(options[0]!.enumValues).toEqual(["fast", "slow"]);
+  });
+
+  test("a transformed boolean renders as a boolean flag with no value arg", () => {
+    const { options } = schemaToCliOptions(
+      z.object({ loud: z.boolean().transform((v) => v ?? false) }),
+    );
+    expect(options[0]!.type).toBe("boolean");
+    expect(options[0]!.arg).toBeUndefined();
+  });
+});
+
+describe("public barrel exports (help/index)", () => {
+  test("re-exports the bare-capable flag helpers from the source", () => {
+    expect(helpIndex.autoDefault).toBe(autoDefault);
+    expect(helpIndex.optionalValueFlag).toBe(optionalValueFlag);
   });
 });
