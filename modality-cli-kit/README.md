@@ -199,7 +199,7 @@ Consequences worth knowing:
 
 Commands `createCliRunner` registers on your CLI's behalf. You declare nothing — they show up in `--help` and dispatch like any other command.
 
-Adding one is a change to that folder alone: drop the module in beside `merge.ts` and add its factory to `DEFAULT_COMMANDS`. The `DefaultCommandName` union widens automatically, so `disableDefaultCommand` accepts the new name with no further wiring.
+Adding one is a change to that folder alone: drop the module in beside `merge.ts` and add its factory to `DEFAULT_COMMANDS`. The `DefaultCommandName` union widens automatically, so `withoutDefaultCommand` accepts the new name with no further wiring.
 
 ### `merge` — fold a piped chain into one document
 
@@ -231,8 +231,8 @@ Documents are found by delimiter balance, not line breaks, so pretty-printed `--
 ### Opting out
 
 ```ts
-createCliRunner({ …, disableDefaultCommand: true });       // register none
-createCliRunner({ …, disableDefaultCommand: ["merge"] });  // register all but these
+createCliRunner({ …, withoutDefaultCommand: true });       // register none
+createCliRunner({ …, withoutDefaultCommand: ["merge"] });  // register all but these
 ```
 
 A command your own registry defines under a default's name always wins, so shadowing needs no opt-out.

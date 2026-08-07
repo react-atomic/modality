@@ -5,7 +5,7 @@
  * Adding one is a change to this folder alone: drop the module in beside
  * `merge.ts` and add its factory to {@link DEFAULT_COMMANDS}. The runner reads
  * the map, the `DefaultCommandName` union widens automatically, and the
- * `disableDefaultCommand` option accepts the new name with no further wiring.
+ * `withoutDefaultCommand` option accepts the new name with no further wiring.
  *
  * Each factory receives the consuming CLI's name and its own registry, so a
  * default command can tailor its help to the CLI it lands in.

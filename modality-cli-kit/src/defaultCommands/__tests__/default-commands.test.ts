@@ -43,12 +43,12 @@ describe("default commands", () => {
     expect(help).toContain("{ demo alpha");
   });
 
-  test("disableDefaultCommand: true registers none", () => {
-    expect(makeRunner({ disableDefaultCommand: true }).getHelp()).not.toContain("merge");
+  test("withoutDefaultCommand: true registers none", () => {
+    expect(makeRunner({ withoutDefaultCommand: true }).getHelp()).not.toContain("merge");
   });
 
-  test("disableDefaultCommand: [\"merge\"] drops just that one", () => {
-    const help = makeRunner({ disableDefaultCommand: ["merge"] }).getHelp();
+  test("withoutDefaultCommand: [\"merge\"] drops just that one", () => {
+    const help = makeRunner({ withoutDefaultCommand: ["merge"] }).getHelp();
     expect(help).not.toContain("merge");
     expect(help).toContain("alpha");
   });
@@ -154,7 +154,7 @@ describe("defaultCommandsFor", () => {
 
   test("an alias under the default's name also suppresses it", () => {
     // `get` resolves aliases too, so a CLI whose alias "merge" points at its own
-    // command shadows the default without needing disableDefaultCommand.
+    // command shadows the default without needing withoutDefaultCommand.
     const registry = createCommandRegistry([alpha, beta], { alpha: ["merge"] });
     expect(defaultCommandsFor("demo", registry, undefined)).toEqual([]);
   });

@@ -82,7 +82,7 @@ export interface CliRunnerOptions {
    * A command the registry already defines under a default's name always wins,
    * so shadowing needs no opt-out.
    */
-  disableDefaultCommand?: boolean | DefaultCommandName[];
+  withoutDefaultCommand?: boolean | DefaultCommandName[];
 }
 
 /** Tokens before the `--` terminator — everything after it is positional. */
@@ -207,12 +207,12 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     globalOptionsSchema,
     skipFields,
     onEmpty,
-    disableDefaultCommand,
+    withoutDefaultCommand,
   } = options;
 
   // Append the default commands here rather than in the consuming package, so
   // `registry` stays that package's own declaration of what it owns.
-  const defaults = defaultCommandsFor(cliName, suppliedRegistry, disableDefaultCommand);
+  const defaults = defaultCommandsFor(cliName, suppliedRegistry, withoutDefaultCommand);
   const defaultNames = new Set(defaults.map((cmd) => cmd.name!));
   const registry = defaults.length
     ? createCommandRegistry([...suppliedRegistry.all, ...defaults], suppliedRegistry.aliases)
