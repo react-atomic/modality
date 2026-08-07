@@ -163,6 +163,90 @@ console.log(success("✓ done")); // green bold
 console.log(error("✗ failed")); // red
 ```
 
+## Output Format from the Environment
+
+Set the format once instead of repeating `--json` on every command in a chain:
+
+```bash
+export OUTPUT=json
+use-stock price && use-stock direction
+```
+
+`createCliRunner` reads a CLI-scoped variable first, then the shared one — so one tool's setting can't leak into another's:
+
+| Source | Example | Wins over |
+|---|---|---|
+| Explicit flag | `--json` / `--jsonl` | everything |
+| CLI-scoped env | `USE_STOCK_OUTPUT=json` | `OUTPUT` |
+| Shared env | `OUTPUT=json` | the default |
+| Default | — | `human` |
+
+Accepted values are `human`, `json`, `jsonl` (case-insensitive). An unrecognized value is reported on stderr and ignored, so a typo degrades to the default rather than failing the run.
+
+> **`VAR=x cmd1 && cmd2` sets the variable for `cmd1` only.** A command-prefix assignment scopes to that one command. Use `export OUTPUT=json` (or prefix each command) for a whole chain.
+
+### It rewrites argv, not just the renderer
+
+Handlers commonly read their own `--json` flag to decide what to print. If the environment only changed the *render* format, a handler could print human text that the runner then wrapped as JSON. So the runner appends the matching flag to argv, keeping validation, the handler, and the renderer on one source of truth.
+
+Consequences worth knowing:
+
+- The flag is only injected when your `globalOptionsSchema` declares it — otherwise per-command validation would reject the flag the runner just added.
+- `human` injects nothing; its signal is the *absence* of a flag. A command with a bespoke flag for rich output (e.g. `use-stock price --human`) still needs that flag passed.
+- Commands your package dispatches before delegating to the runner (raw-passthrough argv) never see the injection.
+
+## Default Commands (`src/defaultCommands/`)
+
+Commands `createCliRunner` registers on your CLI's behalf. You declare nothing — they show up in `--help` and dispatch like any other command.
+
+Adding one is a change to that folder alone: drop the module in beside `merge.ts` and add its factory to `DEFAULT_COMMANDS`. The `DefaultCommandName` union widens automatically, so `disableDefaultCommand` accepts the new name with no further wiring.
+
+### `merge` — fold a piped chain into one document
+
+A shell `&&` chain writes several independent JSON documents to one stdout stream. `merge` reads that stream and emits a single payload:
+
+```bash
+{ use-stock symbol --json && use-stock price --json; } | use-stock merge --json
+```
+```json
+{ "success": true, "result": [ { "symbol": "TXF-S", … }, { "tilt": "long", … } ] }
+```
+
+> **The braces are required.** `|` binds tighter than `&&`, so `a && b | merge` pipes only `b` into the sink and lets `a` escape to the terminal. Nothing on the CLI side can recover stdout that never entered the pipe.
+
+What it does to each document:
+
+| Input shape | Result | Why |
+|---|---|---|
+| `{ success, result }` | unwrapped to `result` | the standard envelope |
+| `{ success: true }` alone | dropped | the empty trailer a self-printing command leaves behind |
+| `{ success: false, error }` | kept | failures must stay visible |
+| anything else | kept as-is | a payload the command printed itself |
+| prose between documents | ignored | progress lines on stdout don't break the parse |
+
+Documents are found by delimiter balance, not line breaks, so pretty-printed `--json` output parses as readily as JSONL.
+
+`--flat` shallow-merges the payloads into one object, later document winning on a key collision. Lossy — only use it when the payloads have disjoint keys.
+
+### Opting out
+
+```ts
+createCliRunner({ …, disableDefaultCommand: true });       // register none
+createCliRunner({ …, disableDefaultCommand: ["merge"] });  // register all but these
+```
+
+A command your own registry defines under a default's name always wins, so shadowing needs no opt-out.
+
+### Using the parts directly
+
+```ts
+import { splitJsonDocs, mergeJsonDocs, createMergeCommand } from "modality-cli-kit";
+
+splitJsonDocs('{"a":1}\n{"b":2}');            // [{ a: 1 }, { b: 2 }]
+mergeJsonDocs(text, { flat: true });          // one shallow-merged object
+createMergeCommand({ cliName: "my-cli" });    // the CLICommand, to register manually
+```
+
 ## Repository
 
 - **Git**: https://github.com/react-atomic/modality

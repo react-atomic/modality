@@ -33,10 +33,13 @@ import {
   formatHuman,
   formatJSON,
   formatJSONL,
+  outputFormatEnvNames,
+  resolveOutputFormatFromEnv,
   type CLIResult,
   type OutputFormat,
 } from "./output";
-import type { CommandRegistry } from "./registry";
+import { createCommandRegistry, type CommandRegistry } from "./registry";
+import { defaultCommandsFor, type DefaultCommandName } from "./defaultCommands";
 
 /** Options for {@link createCliRunner}. */
 export interface CliRunnerOptions {
@@ -54,7 +57,11 @@ export interface CliRunnerOptions {
    * flat-schema handling, etc.). Omit it to dispatch commands directly.
    */
   aiTool?: AITool;
-  /** Global flags (e.g. `--help`, `--json`) rendered in the help footer. */
+  /**
+   * Global flags (e.g. `--help`, `--json`) rendered in the help footer. Flags
+   * declared here are also accepted by every command's validation and may be
+   * injected from the environment — a declared flag is global in practice.
+   */
   globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>;
   /** Schema keys shared by all commands to keep out of per-command options. */
   skipFields?: string[];
@@ -64,20 +71,76 @@ export interface CliRunnerOptions {
    * returning 0) if one is set, otherwise prints global help and returns 1.
    */
   onEmpty?: () => number | Promise<number>;
+  /**
+   * Opt out of the commands the runner supplies by default (currently `merge`,
+   * a stdin sink that folds a piped `&&` chain of `--json` runs into one
+   * document). They are all on unless disabled:
+   *
+   *  - `true` — register none of them
+   *  - `["merge"]` — register all but the named ones
+   *
+   * A command the registry already defines under a default's name always wins,
+   * so shadowing needs no opt-out.
+   */
+  disableDefaultCommand?: boolean | DefaultCommandName[];
+}
+
+/** Tokens before the `--` terminator — everything after it is positional. */
+function flagTokens(argv: string[]): string[] {
+  const terminator = argv.indexOf("--");
+  return terminator === -1 ? argv : argv.slice(0, terminator);
 }
 
 /**
- * Detect the requested output format from argv global flags. Convention:
- * `--jsonl` → JSONL, `--json` → pretty JSON, otherwise human-readable.
+ * Detect the requested output format from the pre-terminator flag tokens.
+ * Convention: `--jsonl` → JSONL, `--json` → pretty JSON, otherwise human.
  *
  * Note: `--jsonl` is NOT in `DEFAULT_GLOBAL_FLAGS` — it is a legacy alias that
  * still routes through format detection for backward compatibility, but per-command
- * validation will reject it unless explicitly added via `extraFlags`.
+ * validation will reject it unless the CLI declares `jsonl` in
+ * `globalOptionsSchema` (the runner forwards those flags as accepted).
  */
-function detectFormat(argv: string[]): OutputFormat {
-  if (argv.includes("--jsonl")) return "jsonl";
-  if (argv.includes("--json")) return "json";
+function detectFormat(flags: string[]): OutputFormat {
+  if (flags.includes("--jsonl")) return "jsonl";
+  if (flags.includes("--json")) return "json";
   return "human";
+}
+
+/** The flag that selects each format; `human` is the flagless default. */
+const FORMAT_FLAG: Partial<Record<OutputFormat, string>> = {
+  json: "json",
+  jsonl: "jsonl",
+};
+
+/**
+ * Apply an environment default by rewriting argv, not just the renderer.
+ *
+ * Handlers read their own `--json`/`--human` flag to decide what to print, so
+ * setting the render format alone would let a handler print human text that the
+ * runner then wraps as JSON. Injecting the flag keeps validation, the handler,
+ * and the renderer reading one source.
+ *
+ * An explicit flag in argv always wins, and the flag is only injected when the
+ * CLI declares it globally — otherwise per-command validation would reject the
+ * very flag the runner added. `human` injects nothing: its signal is absence.
+ */
+function applyEnvFormat(
+  argv: string[],
+  envFormat: OutputFormat | undefined,
+  globalFlags: Set<string>,
+): string[] {
+  if (!envFormat || argv.length === 0) return argv;
+  // A `--json` past the `--` terminator is a positional, not an explicit flag.
+  if (flagTokens(argv).includes("--json") || flagTokens(argv).includes("--jsonl")) return argv;
+
+  const flag = FORMAT_FLAG[envFormat];
+  if (!flag || !globalFlags.has(flag)) return argv;
+
+  // Insert before the `--` terminator — tokens after it are positionals, so an
+  // appended flag would silently become one of them instead of a flag.
+  const terminator = argv.indexOf("--");
+  if (terminator === -1) return [...argv, `--${flag}`];
+  return [...argv.slice(0, terminator), `--${flag}`, ...argv.slice(terminator)];
 }
 
 /**
@@ -139,12 +202,21 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
   const {
     cliName,
     tagline,
-    registry,
+    registry: suppliedRegistry,
     aiTool,
     globalOptionsSchema,
     skipFields,
     onEmpty,
+    disableDefaultCommand,
   } = options;
+
+  // Append the default commands here rather than in the consuming package, so
+  // `registry` stays that package's own declaration of what it owns.
+  const defaults = defaultCommandsFor(cliName, suppliedRegistry, disableDefaultCommand);
+  const defaultNames = new Set(defaults.map((cmd) => cmd.name!));
+  const registry = defaults.length
+    ? createCommandRegistry([...suppliedRegistry.all, ...defaults], suppliedRegistry.aliases)
+    : suppliedRegistry;
 
   // `buildCliFromTools` reads aliases off each command object, so project them
   // from the registry's alias map — keeping the registry the one source.
@@ -153,12 +225,50 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       ...cmd,
       aliases: registry.aliases[cmd.name ?? ""] ?? [],
     })),
-    { cliName, tagline, skipFields, globalOptionsSchema },
+    {
+      cliName,
+      tagline,
+      skipFields,
+      globalOptionsSchema,
+      // The env default is invisible in the flag list, so name it where the
+      // reader is already looking for global output control.
+      footer: `Output format: pass --json, or set ${outputFormatEnvNames(cliName).join(" / ")} (human | json | jsonl). A flag beats the environment.`,
+    },
   );
 
-  async function run(argv: string[] = process.argv.slice(2)): Promise<number> {
-    const renderResult = (result: unknown) =>
-      renderCliResult(result, detectFormat(argv));
+  // Only flags the CLI declares globally can be injected from the environment;
+  // feed the same list into per-command validation so a declared flag is
+  // accepted everywhere — otherwise the injected flag would be rejected. Flags
+  // the command schema itself declares stay valid on top of these.
+  const globalFlags = new Set(Object.keys(globalOptionsSchema?.shape ?? {}));
+  // Long form only: the shared validator skips short flags (its `-h` is an
+  // alias handled elsewhere), and parseCliArgs reads `-v` and `--v` as the
+  // same key once it is in the schema — so forwarding `--v` accepts the short
+  // spelling the help advertises too.
+  const globalFlagTokens = [...globalFlags].map((key) => `--${key}`);
+
+  async function run(rawArgv: string[] = process.argv.slice(2)): Promise<number> {
+    const envFormat = resolveOutputFormatFromEnv(cliName, process.env, (message) =>
+      console.error(message),
+    );
+    const argv = applyEnvFormat(rawArgv, envFormat, globalFlags);
+
+    // An explicit flag always beats the environment, which beats the default.
+    // Read it off `rawArgv` so an injected flag can't masquerade as explicit.
+    //
+    // The environment only drives the renderer when it can also drive the
+    // handler — a format whose flag the CLI does not declare globally is
+    // ignored for both, or the handler's human output would be wrapped as JSON.
+    // `human` has no flag to inject, so it always applies. Only pre-terminator
+    // tokens are flags — a positional `--json` after `--` must not select the
+    // format.
+    const flags = flagTokens(rawArgv);
+    const hasExplicitFormat = flags.includes("--json") || flags.includes("--jsonl");
+    const envFlag = envFormat ? FORMAT_FLAG[envFormat] : undefined;
+    const envApplies = envFlag === undefined || globalFlags.has(envFlag);
+    const format = hasExplicitFormat ? detectFormat(flags) : (envApplies ? envFormat ?? "human" : "human");
+
+    const renderResult = (result: unknown) => renderCliResult(result, format);
     const [name, ...rest] = argv;
 
     if (!name) {
@@ -206,7 +316,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
 
     // Unknown flags, missing required args, and coercion failures all come back
     // as warnings — never throws — so a non-empty list means rejection.
-    const { data, warnings } = validateCLICommandArgs(command, rest);
+    const { data, warnings } = validateCLICommandArgs(command, rest, globalFlagTokens);
     if (warnings.length > 0) {
       for (const warning of warnings) console.error(warning);
       console.log(`\n${cli.getHelp(resolvedName)}`);
@@ -221,9 +331,13 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // dispatch matches the MCP tool exactly; otherwise call the command direct.
     // `command` goes last so the resolved name always wins over any same-named
     // field in the validated args.
-    const result = aiTool
-      ? await aiTool.execute({ ...args, command: resolvedName })
-      : await command.execute(args);
+    //
+    // Default commands always dispatch directly: the runner added them, so the
+    // consuming package's aiTool has no case for them and would reject the call.
+    const result =
+      aiTool && !defaultNames.has(resolvedName)
+        ? await aiTool.execute({ ...args, command: resolvedName })
+        : await command.execute(args);
     renderResult(result);
     const succeeded = result && typeof result === "object" && "success" in result
       ? (result as { success: boolean }).success !== false

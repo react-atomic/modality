@@ -18,3 +18,9 @@ export type { CliRunner, CliRunnerOptions } from "./createCliRunner";
 // ── CLI Output Types ────────────────────────────────────────────────────────
 // Shared output format types (JSON, human, JSONL) for CLI commands.
 export * from "./output";
+
+// ── Default Commands ────────────────────────────────────────────────────────
+// Commands `createCliRunner` registers on every CLI's behalf. Currently the
+// `merge` stdin sink, which folds a piped command chain into one document.
+export { createMergeCommand, splitJsonDocs, mergeJsonDocs } from "./defaultCommands";
+export type { DefaultCommandName, MergeCommandOptions } from "./defaultCommands";

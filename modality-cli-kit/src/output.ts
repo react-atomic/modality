@@ -19,6 +19,48 @@
 /** Supported output formats. */
 export type OutputFormat = "json" | "human" | "jsonl";
 
+/** Every format an `OUTPUT` env var may name. */
+const OUTPUT_FORMATS: readonly OutputFormat[] = ["human", "json", "jsonl"];
+
+/**
+ * Environment variables consulted for a default output format, most specific
+ * first: a CLI-scoped name (`use-stock` → `USE_STOCK_OUTPUT`) so one tool's
+ * setting can't leak into another's, then the shared `OUTPUT`.
+ */
+export function outputFormatEnvNames(cliName: string): string[] {
+  // Collapse separator runs, then trim the edges so a leading or trailing
+  // separator can't double up against the suffix ("use stock v2!" → USE_STOCK_V2_OUTPUT).
+  const scoped = cliName
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  return [`${scoped}_OUTPUT`, "OUTPUT"];
+}
+
+/**
+ * Read the default output format from the environment, or `undefined` when
+ * nothing is set. An unrecognized value is reported to `onInvalid` and ignored,
+ * so a typo degrades to the normal default instead of failing the run.
+ */
+export function resolveOutputFormatFromEnv(
+  cliName: string,
+  env: Record<string, string | undefined>,
+  onInvalid?: (message: string) => void,
+): OutputFormat | undefined {
+  for (const name of outputFormatEnvNames(cliName)) {
+    const raw = env[name]?.trim();
+    if (!raw) continue;
+
+    const format = OUTPUT_FORMATS.find((f) => f === raw.toLowerCase());
+    if (format) return format;
+
+    onInvalid?.(
+      `Ignoring ${name}="${raw}" — expected one of ${OUTPUT_FORMATS.join(", ")}.`,
+    );
+  }
+  return undefined;
+}
+
 // ── Result envelope ──────────────────────────────────────────────────────────
 
 /**
