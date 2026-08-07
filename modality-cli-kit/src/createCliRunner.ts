@@ -106,11 +106,28 @@ function detectFormat(flags: string[]): OutputFormat {
   return "human";
 }
 
-/** The flag that selects each format; `human` is the flagless default. */
-const FORMAT_FLAG: Partial<Record<OutputFormat, string>> = {
+/**
+ * The flag that selects each format.
+ *
+ * `human` is the flagless default for most CLIs, but a CLI whose handlers
+ * default to machine output (and opt into rendering with `--human`) can declare
+ * `human` in its `globalOptionsSchema` — then the environment can drive it just
+ * like the other two. Absence still means human whenever it is not declared.
+ */
+const FORMAT_FLAG: Record<OutputFormat, string> = {
   json: "json",
   jsonl: "jsonl",
+  human: "human",
 };
+
+/**
+ * Is `--human` this CLI's format flag, or a per-command flag that happens to
+ * share the name? Only a globally declared `human` participates in format
+ * selection; otherwise a command's own `--human` would hijack the renderer.
+ */
+function humanIsFormatFlag(globalFlags: Set<string>): boolean {
+  return globalFlags.has(FORMAT_FLAG.human);
+}
 
 /**
  * Apply an environment default by rewriting argv, not just the renderer.
@@ -122,7 +139,7 @@ const FORMAT_FLAG: Partial<Record<OutputFormat, string>> = {
  *
  * An explicit flag in argv always wins, and the flag is only injected when the
  * CLI declares it globally — otherwise per-command validation would reject the
- * very flag the runner added. `human` injects nothing: its signal is absence.
+ * very flag the runner added.
  */
 function applyEnvFormat(
   argv: string[],
@@ -131,10 +148,12 @@ function applyEnvFormat(
 ): string[] {
   if (!envFormat || argv.length === 0) return argv;
   // A `--json` past the `--` terminator is a positional, not an explicit flag.
-  if (flagTokens(argv).includes("--json") || flagTokens(argv).includes("--jsonl")) return argv;
+  const flags = flagTokens(argv);
+  if (flags.includes("--json") || flags.includes("--jsonl")) return argv;
+  if (humanIsFormatFlag(globalFlags) && flags.includes("--human")) return argv;
 
   const flag = FORMAT_FLAG[envFormat];
-  if (!flag || !globalFlags.has(flag)) return argv;
+  if (!globalFlags.has(flag)) return argv;
 
   // Insert before the `--` terminator — tokens after it are positionals, so an
   // appended flag would silently become one of them instead of a flag.
@@ -259,13 +278,16 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // The environment only drives the renderer when it can also drive the
     // handler — a format whose flag the CLI does not declare globally is
     // ignored for both, or the handler's human output would be wrapped as JSON.
-    // `human` has no flag to inject, so it always applies. Only pre-terminator
+    // A CLI that does not declare `human` globally has no flag to inject, and
+    // human is the fallback anyway, so the env still applies. Only pre-terminator
     // tokens are flags — a positional `--json` after `--` must not select the
     // format.
     const flags = flagTokens(rawArgv);
-    const hasExplicitFormat = flags.includes("--json") || flags.includes("--jsonl");
-    const envFlag = envFormat ? FORMAT_FLAG[envFormat] : undefined;
-    const envApplies = envFlag === undefined || globalFlags.has(envFlag);
+    const hasExplicitFormat =
+      flags.includes("--json") ||
+      flags.includes("--jsonl") ||
+      (humanIsFormatFlag(globalFlags) && flags.includes("--human"));
+    const envApplies = envFormat === "human" || (envFormat !== undefined && globalFlags.has(FORMAT_FLAG[envFormat]));
     const format = hasExplicitFormat ? detectFormat(flags) : (envApplies ? envFormat ?? "human" : "human");
 
     const renderResult = (result: unknown) => renderCliResult(result, format);

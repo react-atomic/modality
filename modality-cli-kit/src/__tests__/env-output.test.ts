@@ -30,6 +30,15 @@ const JSONL_GLOBAL_OPTIONS = z.object({
   jsonl: z.boolean().optional().describe("output JSONL"),
 });
 
+/**
+ * For CLIs whose handlers default to machine output and opt into rendering with
+ * `--human` — declaring it globally lets the environment drive it too.
+ */
+const HUMAN_GLOBAL_OPTIONS = z.object({
+  json: z.boolean().optional().describe("output JSON"),
+  human: z.boolean().optional().describe("render human output"),
+});
+
 const makeRunner = (
   globalOptionsSchema: z.ZodObject<Record<string, z.ZodTypeAny>> = GLOBAL_OPTIONS,
 ) =>
@@ -140,10 +149,85 @@ describe("env-driven output format", () => {
     expect(seenArgs).toEqual([{}]);
   });
 
-  test("OUTPUT=human injects nothing — absence is its signal", async () => {
+  test("OUTPUT=human injects nothing when the CLI does not declare --human", async () => {
     const { out } = await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe"]);
     expect(seenArgs).toEqual([{}]);
     expect(out).not.toContain('"success"');
+  });
+
+  test("OUTPUT=human injects --human when the CLI declares it globally", async () => {
+    // A CLI whose handlers default to machine output reads `--human` to decide
+    // what to print, so the env must reach the handler — not just the renderer.
+    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
+    await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe"], runner);
+    expect(seenArgs).toEqual([{ human: true }]);
+  });
+
+  test("OUTPUT=human injects --human before a `--` terminator", async () => {
+    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
+    await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe", "--", "x"], runner);
+    expect(seenArgs).toEqual([{ human: true }]);
+  });
+
+  test("an explicit --json beats OUTPUT=human, and no --human is injected", async () => {
+    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
+    const { out } = await runWith(
+      { OUTPUT: "human", DEMO_CLI_OUTPUT: undefined },
+      ["probe", "--json"],
+      runner,
+    );
+    expect(seenArgs).toEqual([{ json: true }]);
+    expect(JSON.parse(out).success).toBe(true);
+  });
+
+  test("an explicit --human beats OUTPUT=json", async () => {
+    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
+    const { out } = await runWith(
+      { OUTPUT: "json", DEMO_CLI_OUTPUT: undefined },
+      ["probe", "--human"],
+      runner,
+    );
+    expect(seenArgs).toEqual([{ human: true }]);
+    expect(out).not.toContain('"success"');
+  });
+
+  test("OUTPUT=human is not injected twice when --human is already present", async () => {
+    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
+    const { code } = await runWith(
+      { OUTPUT: "human", DEMO_CLI_OUTPUT: undefined },
+      ["probe", "--human"],
+      runner,
+    );
+    expect(code).toBe(0);
+    expect(seenArgs).toEqual([{ human: true }]);
+  });
+
+  test("a per-command --human does not hijack the format when it is not global", async () => {
+    // GLOBAL_OPTIONS has no `human`, so `--human` here is the command's own
+    // flag — OUTPUT=json must still select JSON for the renderer.
+    const humanProbe = {
+      name: "hprobe",
+      description: "Declares its own --human",
+      inputSchema: z.object({ human: z.boolean().optional() }),
+      execute: async (args: unknown) => {
+        seenArgs.push(args);
+        return { success: true, result: { ok: true } };
+      },
+    } as unknown as CLICommand;
+    const runner = createCliRunner({
+      cliName: "demo-cli",
+      tagline: "Demo",
+      registry: createCommandRegistry([humanProbe]),
+      globalOptionsSchema: GLOBAL_OPTIONS,
+    });
+
+    const { out } = await runWith(
+      { OUTPUT: "json", DEMO_CLI_OUTPUT: undefined },
+      ["hprobe", "--human"],
+      runner,
+    );
+    expect(seenArgs).toEqual([{ human: true, json: true }]);
+    expect(JSON.parse(out).success).toBe(true);
   });
 
   test("an explicit --json beats OUTPUT=human", async () => {
