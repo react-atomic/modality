@@ -29,6 +29,7 @@ import type { AITool } from "modality-mcp-kit";
 import type { z } from "zod";
 import { buildCliFromTools } from "./help/cli-builder";
 import { validateCLICommandArgs } from "./help/zod-cli";
+import { resolveGlobalOptions, type GlobalOptionName } from "./globalOptions";
 import {
   formatHuman,
   formatJSON,
@@ -58,9 +59,13 @@ export interface CliRunnerOptions {
    */
   aiTool?: AITool;
   /**
-   * Global flags (e.g. `--help`, `--json`) rendered in the help footer. Flags
-   * declared here are also accepted by every command's validation and may be
-   * injected from the environment — a declared flag is global in practice.
+   * Global flags rendered in the help footer, on top of the defaults the runner
+   * already supplies (`--json`, `--human`, `--no-cache`). Flags declared here —
+   * or defaulted — are also accepted by every command's validation and may be
+   * injected from the environment; a declared flag is global in practice.
+   *
+   * A key that collides with a default overrides it, so rewording a default
+   * needs no opt-out.
    */
   globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>;
   /** Schema keys shared by all commands to keep out of per-command options. */
@@ -83,6 +88,18 @@ export interface CliRunnerOptions {
    * so shadowing needs no opt-out.
    */
   withoutDefaultCommand?: boolean | DefaultCommandName[];
+  /**
+   * Opt out of the global options the runner supplies by default (`json`,
+   * `human`, `no-cache`). They are all on unless disabled:
+   *
+   *  - `true` — supply none of them
+   *  - `["human"]` — supply all but the named ones
+   *
+   * Reach for this only to *remove* a flag the CLI must not accept; to change
+   * one, redeclare the key in {@link CliRunnerOptions.globalOptionsSchema} —
+   * the CLI's own declaration already wins.
+   */
+  withoutDefaultGlobalOption?: boolean | GlobalOptionName[];
 }
 
 /** Tokens before the `--` terminator — everything after it is positional. */
@@ -127,6 +144,17 @@ const FORMAT_FLAG: Record<OutputFormat, string> = {
  */
 function humanIsFormatFlag(globalFlags: Set<string>): boolean {
   return globalFlags.has(FORMAT_FLAG.human);
+}
+
+/**
+ * The format flags to name in the help footer — whichever of them this CLI
+ * kept. A CLI that dropped them all gets no promise it cannot honor.
+ */
+function formatFlagsFooter(globalOptions: z.ZodObject<Record<string, z.ZodTypeAny>>): string {
+  const present = Object.values(FORMAT_FLAG)
+    .filter((flag) => flag in globalOptions.shape)
+    .map((flag) => `--${flag}`);
+  return present.length > 0 ? present.join(" or ") : "no format flag";
 }
 
 /**
@@ -223,11 +251,16 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     tagline,
     registry: suppliedRegistry,
     aiTool,
-    globalOptionsSchema,
+    globalOptionsSchema: suppliedGlobalOptions,
     skipFields,
     onEmpty,
     withoutDefaultCommand,
+    withoutDefaultGlobalOption,
   } = options;
+
+  // Fold in the defaults here rather than in the consuming package, so
+  // `globalOptionsSchema` stays that package's own declaration of what it adds.
+  const globalOptionsSchema = resolveGlobalOptions(suppliedGlobalOptions, withoutDefaultGlobalOption);
 
   // Append the default commands here rather than in the consuming package, so
   // `registry` stays that package's own declaration of what it owns.
@@ -250,8 +283,9 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       skipFields,
       globalOptionsSchema,
       // The env default is invisible in the flag list, so name it where the
-      // reader is already looking for global output control.
-      footer: `Output format: pass --json, or set ${outputFormatEnvNames(cliName).join(" / ")} (human | json | jsonl). A flag beats the environment.`,
+      // reader is already looking for global output control. Only name the
+      // flags this CLI actually has — `withoutDefaultGlobalOption` can remove them.
+      footer: `Output format: pass ${formatFlagsFooter(globalOptionsSchema)}, or set ${outputFormatEnvNames(cliName).join(" / ")} (human | json | jsonl). A flag beats the environment.`,
     },
   );
 
@@ -259,7 +293,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
   // feed the same list into per-command validation so a declared flag is
   // accepted everywhere — otherwise the injected flag would be rejected. Flags
   // the command schema itself declares stay valid on top of these.
-  const globalFlags = new Set(Object.keys(globalOptionsSchema?.shape ?? {}));
+  const globalFlags = new Set(Object.keys(globalOptionsSchema.shape));
   // Long form only: the shared validator skips short flags (its `-h` is an
   // alias handled elsewhere), and parseCliArgs reads `-v` and `--v` as the
   // same key once it is in the schema — so forwarding `--v` accepts the short

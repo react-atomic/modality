@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createCliRunner } from "../createCliRunner";
 import { createCommandRegistry } from "../registry";
 import { outputFormatEnvNames, resolveOutputFormatFromEnv } from "../output";
+import { resolveGlobalOptions, type GlobalOptionName } from "../globalOptions";
 import { setNoColor } from "../help/colors";
 import type { CLICommand } from "../help/types";
 
@@ -20,33 +21,26 @@ const probe = {
   },
 } as unknown as CLICommand;
 
-const GLOBAL_OPTIONS = z.object({
-  json: z.boolean().optional().describe("output JSON"),
-});
-
-/** Like {@link GLOBAL_OPTIONS} but also declaring `jsonl`, so env injection of `--jsonl` is allowed. */
+/** `jsonl` is not a default global option, so a CLI must declare it to inject `--jsonl`. */
 const JSONL_GLOBAL_OPTIONS = z.object({
-  json: z.boolean().optional().describe("output JSON"),
   jsonl: z.boolean().optional().describe("output JSONL"),
 });
 
 /**
- * For CLIs whose handlers default to machine output and opt into rendering with
- * `--human` — declaring it globally lets the environment drive it too.
+ * The runner supplies `json` / `human` / `no-cache` itself, so most runners need
+ * no schema at all — pass one only to add a flag, and `withoutDefaultGlobalOption` to
+ * take a default away.
  */
-const HUMAN_GLOBAL_OPTIONS = z.object({
-  json: z.boolean().optional().describe("output JSON"),
-  human: z.boolean().optional().describe("render human output"),
-});
-
 const makeRunner = (
-  globalOptionsSchema: z.ZodObject<Record<string, z.ZodTypeAny>> = GLOBAL_OPTIONS,
+  globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>,
+  withoutDefaultGlobalOption?: boolean | GlobalOptionName[],
 ) =>
   createCliRunner({
     cliName: "demo-cli",
     tagline: "Demo",
     registry: createCommandRegistry([probe]),
     globalOptionsSchema,
+    withoutDefaultGlobalOption,
   });
 
 /** Run with a patched env and captured stdout/stderr. */
@@ -149,62 +143,55 @@ describe("env-driven output format", () => {
     expect(seenArgs).toEqual([{}]);
   });
 
-  test("OUTPUT=human injects nothing when the CLI does not declare --human", async () => {
-    const { out } = await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe"]);
+  test("OUTPUT=human injects nothing when the CLI opted out of --human", async () => {
+    const runner = makeRunner(undefined, ["human"]);
+    const { out } = await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe"], runner);
     expect(seenArgs).toEqual([{}]);
     expect(out).not.toContain('"success"');
   });
 
-  test("OUTPUT=human injects --human when the CLI declares it globally", async () => {
+  test("OUTPUT=human injects --human, which the runner supplies by default", async () => {
     // A CLI whose handlers default to machine output reads `--human` to decide
     // what to print, so the env must reach the handler — not just the renderer.
-    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
-    await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe"], runner);
+    await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe"]);
     expect(seenArgs).toEqual([{ human: true }]);
   });
 
   test("OUTPUT=human injects --human before a `--` terminator", async () => {
-    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
-    await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe", "--", "x"], runner);
+    await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, ["probe", "--", "x"]);
     expect(seenArgs).toEqual([{ human: true }]);
   });
 
   test("an explicit --json beats OUTPUT=human, and no --human is injected", async () => {
-    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
-    const { out } = await runWith(
-      { OUTPUT: "human", DEMO_CLI_OUTPUT: undefined },
-      ["probe", "--json"],
-      runner,
-    );
+    const { out } = await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, [
+      "probe",
+      "--json",
+    ]);
     expect(seenArgs).toEqual([{ json: true }]);
     expect(JSON.parse(out).success).toBe(true);
   });
 
   test("an explicit --human beats OUTPUT=json", async () => {
-    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
-    const { out } = await runWith(
-      { OUTPUT: "json", DEMO_CLI_OUTPUT: undefined },
-      ["probe", "--human"],
-      runner,
-    );
+    const { out } = await runWith({ OUTPUT: "json", DEMO_CLI_OUTPUT: undefined }, [
+      "probe",
+      "--human",
+    ]);
     expect(seenArgs).toEqual([{ human: true }]);
     expect(out).not.toContain('"success"');
   });
 
   test("OUTPUT=human is not injected twice when --human is already present", async () => {
-    const runner = makeRunner(HUMAN_GLOBAL_OPTIONS);
-    const { code } = await runWith(
-      { OUTPUT: "human", DEMO_CLI_OUTPUT: undefined },
-      ["probe", "--human"],
-      runner,
-    );
+    const { code } = await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, [
+      "probe",
+      "--human",
+    ]);
     expect(code).toBe(0);
     expect(seenArgs).toEqual([{ human: true }]);
   });
 
-  test("a per-command --human does not hijack the format when it is not global", async () => {
-    // GLOBAL_OPTIONS has no `human`, so `--human` here is the command's own
-    // flag — OUTPUT=json must still select JSON for the renderer.
+  test("a per-command --human does not hijack the format when human is opted out", async () => {
+    // With `human` off globally, `--human` here is the command's own flag —
+    // OUTPUT=json must still select JSON for the renderer.
     const humanProbe = {
       name: "hprobe",
       description: "Declares its own --human",
@@ -218,7 +205,7 @@ describe("env-driven output format", () => {
       cliName: "demo-cli",
       tagline: "Demo",
       registry: createCommandRegistry([humanProbe]),
-      globalOptionsSchema: GLOBAL_OPTIONS,
+      withoutDefaultGlobalOption: ["human"],
     });
 
     const { out } = await runWith(
@@ -227,14 +214,6 @@ describe("env-driven output format", () => {
       runner,
     );
     expect(seenArgs).toEqual([{ human: true, json: true }]);
-    expect(JSON.parse(out).success).toBe(true);
-  });
-
-  test("an explicit --json beats OUTPUT=human", async () => {
-    const { out } = await runWith({ OUTPUT: "human", DEMO_CLI_OUTPUT: undefined }, [
-      "probe",
-      "--json",
-    ]);
     expect(JSON.parse(out).success).toBe(true);
   });
 
@@ -251,9 +230,9 @@ describe("env-driven output format", () => {
     expect(out).not.toContain('"success"');
   });
 
-  test("no flag is injected when the CLI does not declare it globally", async () => {
+  test("no flag is injected when the CLI opted out of every global option", async () => {
     // Injecting --json here would be rejected by per-command validation.
-    const runner = makeRunner(z.object({}));
+    const runner = makeRunner(undefined, true);
     const { code } = await runWith(
       { OUTPUT: "json", DEMO_CLI_OUTPUT: undefined },
       ["probe"],
@@ -263,7 +242,7 @@ describe("env-driven output format", () => {
     expect(seenArgs).toEqual([{}]);
   });
 
-  test("the renderer ignores an env format the CLI does not declare globally", async () => {
+  test("the renderer ignores an env format the CLI opted out of", async () => {
     // With no injectable flag, the handler prints human text and the renderer
     // must not wrap it as JSON — that would corrupt the output mid-stream.
     const selfPrint = {
@@ -279,7 +258,7 @@ describe("env-driven output format", () => {
       cliName: "demo",
       tagline: "Demo",
       registry: createCommandRegistry([selfPrint]),
-      globalOptionsSchema: z.object({}),
+      withoutDefaultGlobalOption: true,
     });
 
     const { out } = await runWith({ OUTPUT: "json", DEMO_CLI_OUTPUT: undefined }, ["selfprint"], runner);
@@ -344,8 +323,28 @@ describe("env-driven output format", () => {
       "--",
       "--json",
     ]);
-    expect(seenArgs).toEqual([{}]);
+    expect(seenArgs).toEqual([{ human: true }]);
     expect(out).not.toContain('"success"');
+  });
+
+  test("the help footer names only the format flags this CLI kept", async () => {
+    const full = makeRunner().getHelp();
+    expect(full).toContain("--json or --human");
+    expect(full).toContain("A flag beats the environment.");
+
+    const noHuman = makeRunner(undefined, ["human"]).getHelp();
+    expect(noHuman).toContain("--json");
+    expect(noHuman).not.toContain("--human");
+
+    const bare = makeRunner(undefined, true).getHelp();
+    expect(bare).toContain("no format flag");
+    expect(bare).not.toContain("--json");
+    expect(bare).not.toContain("--human");
+  });
+
+  test("a declared non-default format flag joins the footer list", () => {
+    const runner = makeRunner(JSONL_GLOBAL_OPTIONS);
+    expect(runner.getHelp()).toContain("--json or --jsonl or --human");
   });
 
   test("a declared single-char global flag is accepted by per-command validation", async () => {
@@ -359,5 +358,57 @@ describe("env-driven output format", () => {
     );
     expect(code).toBe(0);
     expect(seenArgs).toEqual([{ v: true }]);
+  });
+});
+
+describe("default global options", () => {
+  test("supplies json/human/no-cache without any schema", () => {
+    const help = makeRunner().getHelp();
+    expect(help).toContain("--json");
+    expect(help).toContain("--human");
+    expect(help).toContain("--no-cache");
+  });
+
+  test("a CLI-supplied key overrides the default of the same name", () => {
+    const runner = makeRunner(
+      z.object({ json: z.boolean().optional().describe("custom json wording") }),
+    );
+    const help = runner.getHelp();
+    expect(help).toContain("custom json wording");
+    expect(help).not.toContain("CLIResult envelope");
+    // The other defaults survive the override.
+    expect(help).toContain("--human");
+  });
+
+  test("withoutDefaultGlobalOption removes only the named defaults", () => {
+    const runner = makeRunner(undefined, ["human", "no-cache"]);
+    const help = runner.getHelp();
+    expect(help).toContain("--json");
+    expect(help).not.toContain("--human");
+    expect(help).not.toContain("--no-cache");
+  });
+
+  test("withoutDefaultGlobalOption: true removes every default", () => {
+    const runner = makeRunner(undefined, true);
+    const help = runner.getHelp();
+    expect(help).not.toContain("--json");
+    expect(help).not.toContain("--human");
+    expect(help).not.toContain("--no-cache");
+  });
+
+  test("global options merge into per-command validation", async () => {
+    const { code } = await runWith({ OUTPUT: undefined, DEMO_CLI_OUTPUT: undefined }, [
+      "probe",
+      "--no-cache",
+    ]);
+    expect(code).toBe(0);
+  });
+
+  test("the default options enforce their types", () => {
+    const schema = resolveGlobalOptions(undefined, undefined);
+    expect(schema.safeParse({ json: "yes" }).success).toBe(false);
+    expect(schema.safeParse({ human: 1 }).success).toBe(false);
+    expect(schema.safeParse({ "no-cache": {} }).success).toBe(false);
+    expect(schema.safeParse({ json: true, human: true, "no-cache": true }).success).toBe(true);
   });
 });

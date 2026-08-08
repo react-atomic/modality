@@ -14,6 +14,10 @@ export { createCommandRegistry } from "./registry";
 export type { CommandRegistry, CommandResolution } from "./registry";
 export { createCliRunner } from "./createCliRunner";
 export type { CliRunner, CliRunnerOptions } from "./createCliRunner";
+// Exported so a CLI that renders help itself (e.g. an MCP-tool help path) can
+// build the same merged global-options view the runner uses.
+export { resolveGlobalOptions } from "./globalOptions";
+export type { GlobalOptionName } from "./globalOptions";
 
 // ── CLI Output Types ────────────────────────────────────────────────────────
 // Shared output format types (JSON, human, JSONL) for CLI commands.

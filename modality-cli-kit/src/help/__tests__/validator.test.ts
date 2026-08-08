@@ -205,6 +205,12 @@ describe("rejectUnknownFlags", () => {
     expect(rejectUnknownFlags(sample, ["--no-cache"])).toEqual([]);
   });
 
+  test("accepts --human as a default global option", () => {
+    // `human` is one of the runner's default global options (json/human/no-cache),
+    // so validation accepts it even though the command schema never declares it.
+    expect(rejectUnknownFlags(sample, ["--human"])).toEqual([]);
+  });
+
   test("accepts schema-driven --no-* negation for boolean fields", () => {
     // auto is a boolean schema field → --no-auto negates it
     expect(rejectUnknownFlags(schemaDriven, ["--no-auto"])).toEqual([]);

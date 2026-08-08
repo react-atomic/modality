@@ -191,8 +191,8 @@ Handlers commonly read their own `--json` flag to decide what to print. If the e
 
 Consequences worth knowing:
 
-- The flag is only injected when your `globalOptionsSchema` declares it — otherwise per-command validation would reject the flag the runner just added.
-- `human` injects nothing; its signal is the *absence* of a flag. A command with a bespoke flag for rich output (e.g. `use-stock price --human`) still needs that flag passed.
+- A flag is injected only when the CLI keeps it globally — `json`, `human`, and `no-cache` are on by default; drop one with `withoutDefaultGlobalOption`. A non-default flag (e.g. `jsonl`) must be declared in `globalOptionsSchema`, or per-command validation would reject the flag the runner just added.
+- `human` injects `--human` by default (it is a default global option), so handlers that read `--human` get it from `OUTPUT=human` too. Only a CLI that drops `human` via `withoutDefaultGlobalOption` keeps `--human` as a per-command flag the environment never supplies.
 - Commands your package dispatches before delegating to the runner (raw-passthrough argv) never see the injection.
 
 ## Default Commands (`src/defaultCommands/`)
