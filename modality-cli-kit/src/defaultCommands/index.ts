@@ -2,8 +2,11 @@
  * Default commands — the ones {@link createCliRunner} registers on a CLI's
  * behalf, so every kit-based CLI gets them without declaring anything.
  *
- * Adding one is a change to this folder alone: drop the module in beside
- * `merge.ts` and add its factory to {@link DEFAULT_COMMANDS}. The runner reads
+ * Adding one is a change to this folder alone: drop the module into
+ * `commands/` beside `merge.ts` — one command per file, one export each, as
+ * `commands/__tests__/exports.test.ts` enforces — and add its factory to
+ * {@link DEFAULT_COMMANDS}. This file is the only place they are wired
+ * together, which is why it sits outside `commands/`. The runner reads
  * the map, the `DefaultCommandName` union widens automatically, and the
  * `withoutDefaultCommand` option accepts the new name with no further wiring.
  *
@@ -12,7 +15,7 @@
  */
 import type { CLICommand } from "../help/types";
 import type { CommandRegistry } from "../registry";
-import { createMergeCommand } from "./merge";
+import { createMergeCommand } from "./commands/merge";
 
 /** Builds a default command for the CLI it is being registered into. */
 type DefaultCommandFactory = (cliName: string, registry: CommandRegistry) => CLICommand;
@@ -56,5 +59,5 @@ export function defaultCommandsFor(
     .map(([, build]) => build(cliName, registry));
 }
 
-export { createMergeCommand, splitJsonDocs, mergeJsonDocs } from "./merge";
-export type { MergeCommandOptions } from "./merge";
+export { createMergeCommand } from "./commands/merge";
+export type { MergeCommandOptions } from "./commands/merge";

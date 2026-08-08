@@ -26,5 +26,9 @@ export * from "./output";
 // ── Default Commands ────────────────────────────────────────────────────────
 // Commands `createCliRunner` registers on every CLI's behalf. Currently the
 // `merge` stdin sink, which folds a piped command chain into one document.
-export { createMergeCommand, splitJsonDocs, mergeJsonDocs } from "./defaultCommands";
+export { createMergeCommand } from "./defaultCommands";
 export type { DefaultCommandName, MergeCommandOptions } from "./defaultCommands";
+
+// The multi-document JSON parsing behind `merge`, usable without it — parse a
+// captured stream directly instead of piping through the command.
+export { splitJsonDocs, mergeJsonDocs } from "./defaultCommands/lib/jsonDocs";
