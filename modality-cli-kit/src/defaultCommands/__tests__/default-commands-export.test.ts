@@ -1,5 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { createMergeCommand, mergeJsonDocs, splitJsonDocs } from "../../index";
+import {
+  createMergeCommand,
+  createSkillCommand,
+  mergeJsonDocs,
+  splitJsonDocs,
+} from "../../index";
 
 // The package-root barrel re-exports the default-command helpers, so consumers
 // reach them from "modality-cli-kit" without a subpath. This guards the barrel
@@ -8,6 +13,10 @@ import { createMergeCommand, mergeJsonDocs, splitJsonDocs } from "../../index";
 describe("package-root barrel exports", () => {
   test("createMergeCommand builds the merge CLICommand", () => {
     expect(createMergeCommand().name).toBe("merge");
+  });
+
+  test("createSkillCommand builds the skill CLICommand", () => {
+    expect(createSkillCommand({ methodsDir: "/repo/methods" }).name).toBe("skill");
   });
 
   test("splitJsonDocs parses concatenated documents", () => {

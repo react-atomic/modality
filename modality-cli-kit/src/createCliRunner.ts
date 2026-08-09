@@ -28,6 +28,7 @@
 import type { AITool } from "modality-mcp-kit";
 import type { z } from "zod";
 import { buildCliFromTools } from "./help/cli-builder";
+import type { CLICommand } from "./help/types";
 import { validateCLICommandArgs } from "./help/zod-cli";
 import { resolveGlobalOptions, type GlobalOptionName } from "./globalOptions";
 import {
@@ -41,6 +42,7 @@ import {
 } from "./output";
 import { createCommandRegistry, type CommandRegistry } from "./registry";
 import { defaultCommandsFor, type DefaultCommandName } from "./defaultCommands";
+import { markRawArgv, takesRawArgv } from "./defaultCommands/internal";
 
 /** Options for {@link createCliRunner}. */
 export interface CliRunnerOptions {
@@ -77,9 +79,10 @@ export interface CliRunnerOptions {
    */
   onEmpty?: () => number | Promise<number>;
   /**
-   * Opt out of the commands the runner supplies by default (currently `merge`,
-   * a stdin sink that folds a piped `&&` chain of `--json` runs into one
-   * document). They are all on unless disabled:
+   * Opt out of the commands the runner supplies by default (`merge`, a stdin
+   * sink that folds a piped `&&` chain of `--json` runs into one document, and
+   * `skill` when {@link CliRunnerOptions.methodsDir} is set). They are all on
+   * unless disabled:
    *
    *  - `true` — register none of them
    *  - `["merge"]` — register all but the named ones
@@ -88,6 +91,15 @@ export interface CliRunnerOptions {
    * so shadowing needs no opt-out.
    */
   withoutDefaultCommand?: boolean | DefaultCommandName[];
+  /**
+   * Absolute path to this CLI's Counter `methods/` tree. Supplying it registers
+   * the `skill` default command (`my-cli skill <method>`), which prints a
+   * method's raw skill text; omit it and no `skill` command exists.
+   *
+   * It also needs the optional `@modality-counter/core` package installed —
+   * the command imports it lazily and reports a missing install as an error.
+   */
+  methodsDir?: string;
   /**
    * Opt out of the global options the runner supplies by default (`json`,
    * `human`, `no-cache`). They are all on unless disabled:
@@ -256,6 +268,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     onEmpty,
     withoutDefaultCommand,
     withoutDefaultGlobalOption,
+    methodsDir,
   } = options;
 
   // Fold in the defaults here rather than in the consuming package, so
@@ -264,11 +277,22 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
 
   // Append the default commands here rather than in the consuming package, so
   // `registry` stays that package's own declaration of what it owns.
-  const defaults = defaultCommandsFor(cliName, suppliedRegistry, withoutDefaultCommand);
+  const defaults = defaultCommandsFor(cliName, suppliedRegistry, withoutDefaultCommand, methodsDir);
   const defaultNames = new Set(defaults.map((cmd) => cmd.name!));
   const registry = defaults.length
     ? createCommandRegistry([...suppliedRegistry.all, ...defaults], suppliedRegistry.aliases)
     : suppliedRegistry;
+
+  // `createCommandRegistry` normalizes every command into a fresh object, so
+  // the raw-argv grant — which is held by object identity — does not survive
+  // registration. Re-apply it to the objects the registry will actually
+  // dispatch. This stays inside the kit: `markRawArgv` is not exported from
+  // the package, so only a command the kit authored can be re-marked here.
+  for (const command of defaults) {
+    if (!takesRawArgv(command)) continue;
+    const registered = registry.get(command.name!);
+    if (registered) markRawArgv(registered);
+  }
 
   // `buildCliFromTools` reads aliases off each command object, so project them
   // from the registry's alias map — keeping the registry the one source.
@@ -299,6 +323,53 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
   // same key once it is in the schema — so forwarding `--v` accepts the short
   // spelling the help advertises too.
   const globalFlagTokens = [...globalFlags].map((key) => `--${key}`);
+
+  /**
+   * Dispatch a raw-argv command — one the kit itself marked via
+   * `defaultCommands/internal`. The command's valid flags are not knowable
+   * from a static schema (they depend on which Counter method was named), so
+   * the runner hands over argv as typed, minus its own global flags, which it
+   * strips: a `--human` or `--no-cache` belongs to the CLI, not the method,
+   * and must neither fail the command's param validation nor leak into Counter
+   * as a method parameter. No consuming CLI can reach this path.
+   *
+   * Help is split by who the flag belongs to. `cli <cmd> --help` (a flag first,
+   * or nothing at all) is a question about the command, so the runner answers
+   * it. Once a non-flag token leads — `cli skill <method> --help` — the whole
+   * tail is the command's business, `--help` included.
+   *
+   * The command reports failure the way a shell tool does, by setting
+   * `process.exitCode`; anything it returns is still rendered, so a raw-argv
+   * command may print for itself or hand back a result.
+   */
+  async function runRawArgs(
+    command: CLICommand,
+    rest: string[],
+    resolvedName: string,
+    renderResult: (result: unknown) => void,
+  ): Promise<number> {
+    const first = rest[0];
+    const commandOwnsFlags = first !== undefined && !first.startsWith("-");
+    if (!commandOwnsFlags && (rest.includes("--help") || rest.includes("-h"))) {
+      console.log(cli.getHelp(resolvedName));
+      return 0;
+    }
+
+    // The command reports failure by setting `process.exitCode`. Clear it
+    // first so one failed raw-argv run cannot poison later runs in the same
+    // process: Bun ignores `process.exitCode = undefined`, so reset through a
+    // numeric value the failure path will overwrite.
+    process.exitCode = 0;
+
+    // Global flags are the runner's, not the method's: strip them so a
+    // `--human` or `--no-cache` can neither fail the command's param
+    // validation nor arrive at Counter as a method parameter. The command's
+    // own flags and `--help` are left untouched.
+    const commandArgs = rest.filter((token) => !globalFlagTokens.includes(token));
+    const result = await (command.execute as (args: string[]) => Promise<unknown>)(commandArgs);
+    renderResult(result);
+    return Number(process.exitCode);
+  }
 
   async function run(rawArgv: string[] = process.argv.slice(2)): Promise<number> {
     const envFormat = resolveOutputFormatFromEnv(cliName, process.env, (message) =>
@@ -365,6 +436,14 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // Use the resolved name so help, validation, and dispatch all agree
     // even when the user typed a prefix or alias.
     const { command, name: resolvedName } = resolution;
+
+    // A raw-argv command owns its argv, so hand it the tokens the user actually
+    // typed — `rawArgv`, not `argv`, since an env-injected `--json` would
+    // otherwise arrive as one of its arguments.
+    if (takesRawArgv(command)) {
+      return runRawArgs(command, rawArgv.slice(1), resolvedName, renderResult);
+    }
+
     if (rest.includes("--help") || rest.includes("-h")) {
       console.log(cli.getHelp(resolvedName));
       return 0;

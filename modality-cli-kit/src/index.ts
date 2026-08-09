@@ -24,10 +24,16 @@ export type { GlobalOptionName } from "./globalOptions";
 export * from "./output";
 
 // ── Default Commands ────────────────────────────────────────────────────────
-// Commands `createCliRunner` registers on every CLI's behalf. Currently the
-// `merge` stdin sink, which folds a piped command chain into one document.
-export { createMergeCommand } from "./defaultCommands";
-export type { DefaultCommandName, MergeCommandOptions } from "./defaultCommands";
+// Commands `createCliRunner` registers on every CLI's behalf: the `merge`
+// stdin sink, which folds a piped command chain into one document, and `skill`,
+// which prints a Counter method's raw skill text for a CLI that sets
+// `methodsDir`.
+export { createMergeCommand, createSkillCommand } from "./defaultCommands";
+export type {
+  DefaultCommandName,
+  MergeCommandOptions,
+  SkillCommandOptions,
+} from "./defaultCommands";
 
 // The multi-document JSON parsing behind `merge`, usable without it — parse a
 // captured stream directly instead of piping through the command.

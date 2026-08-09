@@ -10,20 +10,41 @@
  * the map, the `DefaultCommandName` union widens automatically, and the
  * `withoutDefaultCommand` option accepts the new name with no further wiring.
  *
- * Each factory receives the consuming CLI's name and its own registry, so a
- * default command can tailor its help to the CLI it lands in.
+ * Each factory receives a {@link DefaultCommandContext}, so a default command
+ * can tailor its help to the CLI it lands in — and can decline to register at
+ * all (return `undefined`) when that CLI supplies nothing for it to work on.
  */
 import type { CLICommand } from "../help/types";
 import type { CommandRegistry } from "../registry";
 import { createMergeCommand } from "./commands/merge";
+import { createSkillCommand } from "./commands/skill";
 
-/** Builds a default command for the CLI it is being registered into. */
-type DefaultCommandFactory = (cliName: string, registry: CommandRegistry) => CLICommand;
+/** What a default command knows about the CLI it is being registered into. */
+interface DefaultCommandContext {
+  /** Binary name, for help and examples. */
+  cliName: string;
+  /** The CLI's own commands, so a default can tailor its examples. */
+  registry: CommandRegistry;
+  /**
+   * Absolute path to the CLI's Counter `methods/` tree, when it has one. A
+   * default that needs it returns `undefined` without one rather than
+   * registering a command that cannot work.
+   */
+  methodsDir?: string;
+}
+
+/**
+ * Builds a default command for the CLI it is being registered into, or
+ * `undefined` when that CLI supplies nothing for it to work on.
+ */
+type DefaultCommandFactory = (context: DefaultCommandContext) => CLICommand | undefined;
 
 /** Every default command, keyed by the name it registers under. */
 const DEFAULT_COMMANDS = {
-  merge: (cliName, registry) =>
+  merge: ({ cliName, registry }) =>
     createMergeCommand({ cliName, exampleCommands: exampleCommandNames(registry) }),
+  skill: ({ cliName, methodsDir }) =>
+    methodsDir === undefined ? undefined : createSkillCommand({ cliName, methodsDir }),
 } satisfies Record<string, DefaultCommandFactory>;
 
 /** Name of a command the runner supplies by default. */
@@ -44,20 +65,29 @@ function exampleCommandNames(registry: CommandRegistry): [string, string] {
  * already defined by the CLI itself — a command the registry owns under the
  * same name always wins, so shadowing needs no opt-out.
  *
+ * A factory that returns `undefined` — because the CLI supplies nothing for it
+ * to work on — is dropped just as quietly as a disabled one.
+ *
  * @param disabled `true` to register none, or the names to leave out.
+ * @param methodsDir The CLI's Counter `methods/` tree, when it has one.
  */
 export function defaultCommandsFor(
   cliName: string,
   registry: CommandRegistry,
   disabled: boolean | DefaultCommandName[] | undefined,
+  methodsDir?: string,
 ): CLICommand[] {
   if (disabled === true) return [];
   const off = new Set<string>(Array.isArray(disabled) ? disabled : []);
+  const context: DefaultCommandContext = { cliName, registry, methodsDir };
 
   return Object.entries(DEFAULT_COMMANDS)
     .filter(([name]) => !off.has(name) && !registry.get(name))
-    .map(([, build]) => build(cliName, registry));
+    .map(([, build]) => build(context))
+    .filter((command): command is CLICommand => command !== undefined);
 }
 
 export { createMergeCommand } from "./commands/merge";
 export type { MergeCommandOptions } from "./commands/merge";
+export { createSkillCommand } from "./commands/skill";
+export type { SkillCommandOptions } from "./commands/skill";

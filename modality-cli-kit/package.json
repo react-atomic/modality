@@ -1,5 +1,5 @@
 {
-  "version": "0.6.2",
+  "version": "0.6.3",
   "name": "modality-cli-kit",
   "repository": {
     "type": "git",
@@ -15,6 +15,9 @@
     "modality-mcp-kit": "^2.1.0",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "@modality-counter/core": "^2.0.1"
+  },
   "devDependencies": {
     "modality-bun-kit": "^1.3.14-3"
   },
@@ -29,7 +32,7 @@
   "scripts": {
     "build:clean": "find ./dist -name '*.*' | xargs rm -rf",
     "build:types": "bun tsc -p ./",
-    "build:src": "bun build src/index.ts --outdir dist --target=node",
+    "build:src": "bun build src/index.ts --outdir dist --target=node --external @modality-counter/core",
     "build": "bun run build:clean && bun run build:types && bun run build:src",
     "test": "npm run build && bun test",
     "prepublishOnly": "npm t"
