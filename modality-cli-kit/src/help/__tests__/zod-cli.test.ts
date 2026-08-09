@@ -9,6 +9,7 @@ import {
   buildCLICommandValidator,
   schemaToCliOptions,
   toKebab,
+  toFlagName,
   normalizeSchemaKeys,
   buildKeyMap,
   createFlatCommandSchema,
@@ -100,6 +101,27 @@ describe("toKebab", () => {
 
   test("lowercases an already-kebab string", () => {
     expect(toKebab("already-kebab")).toBe("already-kebab");
+  });
+});
+
+// ── toFlagName ────────────────────────────────────────────────────────
+
+describe("toFlagName", () => {
+  test("camelCase keys display as kebab-case", () => {
+    expect(toFlagName("userDataDir")).toBe("user-data-dir");
+  });
+
+  test("snake_case keys display as kebab-case", () => {
+    expect(toFlagName("user_data_dir")).toBe("user-data-dir");
+    expect(toFlagName("signal_stop")).toBe("signal-stop");
+  });
+
+  test("an already-kebab key passes through", () => {
+    expect(toFlagName("cost-entry")).toBe("cost-entry");
+  });
+
+  test("single-character keys are left alone", () => {
+    expect(toFlagName("h")).toBe("h");
   });
 });
 
@@ -246,6 +268,86 @@ describe("buildKeyMap", () => {
     expect(km!["symbol"]).toEqual({ position: 0, flag: "--sym" });
     expect(km!["amount"]).toEqual({ arg: "<N>" });
     expect(km!["secret"]).toEqual({ hidden: true });
+  });
+});
+
+// ── snake_case keys: kebab display, either spelling accepted ─────────
+
+describe("snake_case schema keys", () => {
+  // A schema may spell keys with underscores because that is what the code
+  // behind it reads (use-stock's rule conditions read `ctx.signal_stop`).
+  // Users should still get the kebab-case flag every other CLI has, and the
+  // handler should still get its own spelling back.
+  const schema = z.object({
+    signal_stop: z.coerce.number().optional(),
+    dryRun: z.boolean().optional(),
+  });
+
+  test("help advertises the kebab spelling", () => {
+    const { options } = schemaToCliOptions(schema);
+    expect(options.map((o) => o.flag)).toEqual(["--signal-stop", "--dry-run"]);
+  });
+
+  test("the value placeholder is kebab too", () => {
+    const [signalStop] = schemaToCliOptions(schema).options;
+    expect(signalStop?.arg).toBe("<signal-stop>");
+  });
+
+  test("the kebab spelling parses into the schema's own key", () => {
+    // The handler keeps reading `signal_stop`; only the flag is kebab.
+    const { data } = parseCliArgs(schema, ["--signal-stop", "44200"]);
+    expect(data).toEqual({ signal_stop: 44200 });
+  });
+
+  test("the underscore spelling parses to the same key", () => {
+    const { data } = parseCliArgs(schema, ["--signal_stop", "44200"]);
+    expect(data).toEqual({ signal_stop: 44200 });
+  });
+
+  test("both spellings work with =value form", () => {
+    expect(parseCliArgs(schema, ["--signal-stop=44200"]).data).toEqual({ signal_stop: 44200 });
+    expect(parseCliArgs(schema, ["--signal_stop=44200"]).data).toEqual({ signal_stop: 44200 });
+  });
+
+  test("a kebab key also accepts the underscore spelling", () => {
+    // The tolerance runs both ways, so neither convention is privileged.
+    const kebabSchema = z.object({ "cost-entry": z.coerce.number().optional() });
+    expect(parseCliArgs(kebabSchema, ["--cost_entry", "3"]).data).toEqual({ "cost-entry": 3 });
+  });
+
+  test("when both spellings are declared, each flag reaches its own key", () => {
+    // Exact spelling wins: a schema that deliberately declares both
+    // `signal_stop` and `signal-stop` keeps them distinct instead of
+    // collapsing one onto the other.
+    const both = z.object({
+      signal_stop: z.coerce.number().optional(),
+      "signal-stop": z.coerce.number().optional(),
+    });
+    expect(parseCliArgs(both, ["--signal_stop", "1"]).data).toEqual({ signal_stop: 1 });
+    expect(parseCliArgs(both, ["--signal-stop", "2"]).data).toEqual({ "signal-stop": 2 });
+  });
+
+  test("negation accepts either spelling", () => {
+    const boolSchema = z.object({ auto_fix: z.boolean().optional() });
+    expect(parseCliArgs(boolSchema, ["--no-auto-fix"]).data).toEqual({ auto_fix: false });
+    expect(parseCliArgs(boolSchema, ["--no-auto_fix"]).data).toEqual({ auto_fix: false });
+  });
+
+  test("an unknown flag is still unknown, and the suggestion is kebab", () => {
+    // The suggestion must be copy-pasteable — printing the schema's raw
+    // underscore key would tell the user to type the less common spelling.
+    const { warnings } = parseCliArgs(schema, ["--signal-stopp", "1"]);
+    expect(warnings[0]).toContain("Did you mean --signal-stop?");
+  });
+
+  test("the shape is left alone — no rebuild, so refinements survive", () => {
+    // Doing this by renaming keys in `normalizeSchemaKeys` would rebuild the
+    // object and silently drop object-level refinements.
+    const refined = z
+      .object({ signal_stop: z.coerce.number().optional() })
+      .refine((v) => v.signal_stop !== 0, { message: "signal_stop must not be zero" });
+    expect(normalizeSchemaKeys(refined as never)).toBe(refined);
+    expect(refined.safeParse({ signal_stop: 0 }).success).toBe(false);
   });
 });
 

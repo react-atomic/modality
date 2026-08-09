@@ -259,13 +259,13 @@ export function parseCliArgs<T extends z.ZodRawShape>(
       const noKey = "no-" + rest;
       // Prefer matching the full key (e.g., --no-cache → "no-cache")
       // then fall back to stripping the prefix (e.g., --no-cache → "cache")
-      const matchedKey = shapeKeys.has(noKey) ? noKey : shapeKeys.has(rest) ? rest : null;
+      const matchedKey = resolveShapeKey(noKey, shapeKeys) ?? resolveShapeKey(rest, shapeKeys);
       if (matchedKey) {
         parsed[matchedKey] = false;
       } else {
         const suggestion = fuzzySuggestion(noKey, [...shapeKeys]) ?? fuzzySuggestion(rest, [...shapeKeys]);
         warnings.push(
-          `Unknown flag --no-${rest}${suggestion ? `. Did you mean --no-${suggestion}?` : ""}`,
+          `Unknown flag --no-${rest}${suggestion ? `. Did you mean --no-${toFlagName(suggestion)}?` : ""}`,
         );
       }
       continue;
@@ -274,14 +274,17 @@ export function parseCliArgs<T extends z.ZodRawShape>(
     // --<flag>[=<value>], -<f>[=<value>], or flag followed by a value token
     const eqIdx = a.indexOf("=");
     const raw = eqIdx !== -1 ? a.slice(0, eqIdx) : a;
-    const key = raw.startsWith("--") ? raw.slice(2) : raw.slice(1);
+    const token = raw.startsWith("--") ? raw.slice(2) : raw.slice(1);
     let value: string | undefined =
       eqIdx !== -1 ? a.slice(eqIdx + 1) : undefined;
 
-    if (!shapeKeys.has(key)) {
-      const suggestion = fuzzySuggestion(key, [...shapeKeys]);
+    // `--signal-stop` and `--signal_stop` both reach a `signal_stop` key: the
+    // schema's spelling is the handler's business, not the user's.
+    const key = resolveShapeKey(token, shapeKeys);
+    if (key === undefined) {
+      const suggestion = fuzzySuggestion(token, [...shapeKeys]);
       warnings.push(
-        `Unknown flag ${raw}${suggestion ? `. Did you mean --${suggestion}?` : ""}`,
+        `Unknown flag ${raw}${suggestion ? `. Did you mean --${toFlagName(suggestion)}?` : ""}`,
       );
       continue;
     }
@@ -358,6 +361,40 @@ export function parseCliArgs<T extends z.ZodRawShape>(
  */
 export function toKebab(s: string): string {
   return s.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
+/**
+ * The flag spelling shown for a schema key: kebab-case, whichever convention
+ * the key itself uses. `userDataDir` and `user_data_dir` both display as
+ * `--user-data-dir`, matching what CLI users expect (`--dry-run`, `--no-cache`).
+ *
+ * Display only — the shape key is left alone, so a snake_case schema keeps
+ * handing `signal_stop` to its handler while advertising `--signal-stop`. Both
+ * spellings are accepted on input; see {@link resolveShapeKey}.
+ */
+export function toFlagName(key: string): string {
+  return toKebab(key).replace(/_/g, "-");
+}
+
+/**
+ * Find the shape key a flag token refers to, treating `-` and `_` as the same
+ * separator.
+ *
+ * A schema may spell its keys either way — `signal_stop` because that is what
+ * the consuming code reads, `userDataDir` because that is the JS convention —
+ * and neither should dictate what the user has to type. Matching the exact
+ * spelling first keeps a schema that deliberately declares both distinct.
+ *
+ * Keys that mix conventions (e.g. `user_DataDir`) resolve to neither spelling:
+ * the flag they display (`--user-data-dir`) is rejected on input. Keep a key
+ * uniformly snake_case or camelCase.
+ */
+function resolveShapeKey(key: string, shapeKeys: Set<string>): string | undefined {
+  if (shapeKeys.has(key)) return key;
+  const underscored = key.replace(/-/g, "_");
+  if (shapeKeys.has(underscored)) return underscored;
+  const hyphenated = key.replace(/_/g, "-");
+  return shapeKeys.has(hyphenated) ? hyphenated : undefined;
 }
 
 // ── Zod field introspection ───────────────────────────────────────────────
@@ -473,14 +510,14 @@ export function schemaToCliOptions(
       analyzeZodField(rawField as z.ZodTypeAny);
 
     const flag =
-      override?.flag ?? (key.length === 1 ? `-${key}` : `--${toKebab(key)}`);
+      override?.flag ?? (key.length === 1 ? `-${key}` : `--${toFlagName(key)}`);
 
     const opt: Option = {
       flag,
       arg:
         baseType === "boolean"
           ? undefined
-          : override?.arg ?? `<${toKebab(key)}>`,
+          : override?.arg ?? `<${toFlagName(key)}>`,
       desc: description ?? "",
       type: baseType as Option["type"],
       required: !isOptional,

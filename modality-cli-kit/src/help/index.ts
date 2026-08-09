@@ -72,6 +72,7 @@ export {
   inferOptionType,
   schemaToCliOptions,
   toKebab,
+  toFlagName,
   parseCliArgs,
   validateCLICommandArgs,
   buildCLICommandValidator,
