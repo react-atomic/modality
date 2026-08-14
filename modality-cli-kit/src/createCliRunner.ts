@@ -17,6 +17,7 @@
  * export const cli = createCliRunner({
  *   cliName: "my-cli",
  *   tagline: "My toolkit",
+ *   version: "1.2.3",
  *   registry,
  *   skipFields: ["json"],
  *   onEmpty: () => { console.log("no command given"); return 0; },
@@ -50,6 +51,12 @@ export interface CliRunnerOptions {
   cliName: string;
   /** One-line tagline shown at the top of global help. */
   tagline: string;
+  /**
+   * Version printed by `--version` / `-v`, typically the consuming package's
+   * `package.json` version. Omit it — or pass an empty string — and the flag
+   * reports that no version is configured.
+   */
+  version?: string;
   /** The command registry to dispatch into. */
   registry: CommandRegistry;
   /**
@@ -261,6 +268,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
   const {
     cliName,
     tagline,
+    version,
     registry: suppliedRegistry,
     aiTool,
     globalOptionsSchema: suppliedGlobalOptions,
@@ -415,8 +423,9 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       return 0;
     }
     if (name === "--version" || name === "-v") {
-      // Version is typically set by the consuming package; fall through to help if not configured.
-      console.log(`${cliName} (version not configured)`);
+      // The consuming package owns its version, so it comes in through options;
+      // say so plainly when it was not supplied rather than inventing one.
+      console.log(version ? `${cliName} v${version}` : `${cliName} (version not configured)`);
       return 0;
     }
 

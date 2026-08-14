@@ -315,10 +315,33 @@ describe("createCliRunner.run", () => {
     expect(help).toContain("greet");
   });
 
-  test("--version flag prints version info and returns 0", async () => {
+  test("--version without a configured version prints (version not configured)", async () => {
     const { code, logs } = await runCapturing(baseOpts(), ["--version"]);
     expect(code).toBe(0);
-    expect(logs.join("\n")).toContain("my-cli");
+    expect(logs.join("\n")).toContain("my-cli (version not configured)");
+  });
+
+  test("--version prints the version supplied to createCliRunner", async () => {
+    const { code, logs } = await runCapturing({ ...baseOpts(), version: "1.2.3" }, ["--version"]);
+    expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("my-cli v1.2.3");
+  });
+
+  test("-v prints the version supplied to createCliRunner", async () => {
+    const { code, logs } = await runCapturing({ ...baseOpts(), version: "1.2.3" }, ["-v"]);
+    expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("my-cli v1.2.3");
+  });
+
+  test("-v without a configured version prints (version not configured)", async () => {
+    const { code, logs } = await runCapturing(baseOpts(), ["-v"]);
+    expect(code).toBe(0);
+    expect(logs.join("\n")).toContain("my-cli (version not configured)");
+  });
+
+  test("empty-string version is treated as not configured", async () => {
+    const { logs } = await runCapturing({ ...baseOpts(), version: "" }, ["--version"]);
+    expect(logs.join("\n")).toContain("my-cli (version not configured)");
   });
 
   test("command with validation error shows help after warnings", async () => {
