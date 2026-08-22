@@ -41,7 +41,7 @@
  * ```
  */
 import { z } from "zod";
-import type { Option, HelpConfig, CLICommand } from "./types";
+import type { Option, HelpConfig, CLICommand, KeyOverride } from "./types";
 import { schemaToCliOptions, toKebab, buildKeyMap } from "./zod-cli";
 import { getHelp } from "./generator";
 import { buildFlagRejector } from "./validator";
@@ -58,6 +58,13 @@ export interface BuildCliFromToolsOptions
    * Flags like `--help`, `-h`, `--json` are always included by default.
    */
   globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  /**
+   * Per-field overrides for the global flags derived from
+   * `globalOptionsSchema` — the same `KeyOverride` shape a command uses for its
+   * own fields. Without it a value placeholder is derived from the key
+   * (`--cdp <cdp>`); with `{ cdp: { arg: "<url>" } }` help reads `--cdp <url>`.
+   */
+  globalOptionsKeyMap?: Record<string, KeyOverride>;
   /**
    * Schema keys to skip during CLI flag/positional generation for ALL tools.
    * Useful for fields shared by every tool (like `BaseArgsSchema` fields)
@@ -111,7 +118,7 @@ export function buildCliFromTools(
   tools: Partial<CLICommand>[],
   options: BuildCliFromToolsOptions,
 ): CliBuildResult {
-  const { globalOptionsSchema, skipFields, ...helpFields } = options;
+  const { globalOptionsSchema, globalOptionsKeyMap, skipFields, ...helpFields } = options;
   const { cliName } = helpFields;
 
   const aliases: Record<string, string> = {};
@@ -156,7 +163,7 @@ export function buildCliFromTools(
 
   let globalOptions: Option[] | undefined;
   if (globalOptionsSchema) {
-    globalOptions = schemaToCliOptions(globalOptionsSchema).options;
+    globalOptions = schemaToCliOptions(globalOptionsSchema, globalOptionsKeyMap).options;
   }
 
   const helpConfig: HelpConfig = {

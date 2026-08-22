@@ -528,3 +528,62 @@ describe("createCliRunner.run — aiTool dispatch", () => {
     expect(logs.join("\n")).toContain("plain string result");
   });
 });
+
+describe("createCliRunner.getHelp", () => {
+  test("globalExamples render in global help", () => {
+    const cli = createCliRunner({
+      ...baseOpts(),
+      globalExamples: ["my-cli greet world", "my-cli greet world --loud"],
+    });
+    const help = cli.getHelp();
+    expect(help).toContain("my-cli greet world --loud");
+  });
+
+  test("globalOptionsKeyMap names the value placeholder", () => {
+    const cli = createCliRunner({
+      ...baseOpts(),
+      globalOptionsSchema: z.object({
+        cdp: z.string().optional().describe("Browser debug URL"),
+      }),
+      globalOptionsKeyMap: { cdp: { arg: "<url>" } },
+    });
+    const help = cli.getHelp();
+    expect(help).toContain("--cdp <url>");
+    expect(help).not.toContain("--cdp <cdp>");
+  });
+
+  test("without a keyMap the placeholder falls back to the key name", () => {
+    const cli = createCliRunner({
+      ...baseOpts(),
+      globalOptionsSchema: z.object({
+        cdp: z.string().optional().describe("Browser debug URL"),
+      }),
+    });
+    expect(cli.getHelp()).toContain("--cdp <cdp>");
+  });
+
+  test("a supplied footer replaces the default output-format line", () => {
+    const cli = createCliRunner({ ...baseOpts(), footer: "Run my-cli <command> --help." });
+    const help = cli.getHelp();
+    expect(help).toContain("Run my-cli <command> --help.");
+    expect(help).not.toContain("Output format: pass");
+  });
+
+  test("the default footer still names the format flags when none is supplied", () => {
+    expect(createCliRunner(baseOpts()).getHelp()).toContain("Output format: pass");
+  });
+
+  test("the default footer points readers at per-command help", () => {
+    // Discovery matters as much as format: without this line a reader has no
+    // hint that every command carries its own `--help`.
+    expect(createCliRunner(baseOpts()).getHelp()).toContain(
+      "Run `my-cli <command> --help` for more information about a command.",
+    );
+  });
+
+  test("help lists the default commands the runner registers", () => {
+    // The runner dispatches `merge`, so help must document it — a CLI that
+    // renders help from its own registry alone would silently omit it.
+    expect(createCliRunner(baseOpts()).getHelp()).toContain("merge");
+  });
+});

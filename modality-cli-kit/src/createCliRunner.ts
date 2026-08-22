@@ -29,7 +29,7 @@
 import type { AITool } from "modality-mcp-kit";
 import type { z } from "zod";
 import { buildCliFromTools } from "./help/cli-builder";
-import type { CLICommand } from "./help/types";
+import type { CLICommand, KeyOverride } from "./help/types";
 import { validateCLICommandArgs } from "./help/zod-cli";
 import { resolveGlobalOptions, type GlobalOptionName } from "./globalOptions";
 import {
@@ -77,8 +77,26 @@ export interface CliRunnerOptions {
    * needs no opt-out.
    */
   globalOptionsSchema?: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  /**
+   * Per-field overrides for the global flags derived from
+   * {@link CliRunnerOptions.globalOptionsSchema}. Without it a value
+   * placeholder is derived from the key (`--cdp <cdp>`); with
+   * `{ cdp: { arg: "<url>" } }` help reads `--cdp <url>`.
+   */
+  globalOptionsKeyMap?: Record<string, KeyOverride>;
   /** Schema keys shared by all commands to keep out of per-command options. */
   skipFields?: string[];
+  /**
+   * Example invocations shown at the bottom of global help, e.g.
+   * `["my-cli open https://example.com"]`. Omit for no examples section.
+   */
+  globalExamples?: string[];
+  /**
+   * Replace the footer line. The default names this CLI's format flags and the
+   * environment variables that set them; supplying this drops that line, so
+   * carry over anything the reader still needs.
+   */
+  footer?: string;
   /**
    * Invoked when argv is empty. Return a process exit code. When omitted, the
    * runner defers to {@link CliRunnerOptions.aiTool} (calling `execute({})`,
@@ -272,7 +290,10 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     registry: suppliedRegistry,
     aiTool,
     globalOptionsSchema: suppliedGlobalOptions,
+    globalOptionsKeyMap,
     skipFields,
+    globalExamples,
+    footer: suppliedFooter,
     onEmpty,
     withoutDefaultCommand,
     withoutDefaultGlobalOption,
@@ -314,10 +335,17 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       tagline,
       skipFields,
       globalOptionsSchema,
+      globalOptionsKeyMap,
+      globalExamples,
       // The env default is invisible in the flag list, so name it where the
       // reader is already looking for global output control. Only name the
       // flags this CLI actually has — `withoutDefaultGlobalOption` can remove them.
-      footer: `Output format: pass ${formatFlagsFooter(globalOptionsSchema)}, or set ${outputFormatEnvNames(cliName).join(" / ")} (human | json | jsonl). A flag beats the environment.`,
+      footer:
+        suppliedFooter ??
+        [
+          `Run \`${cliName} <command> --help\` for more information about a command.`,
+          `Output format: pass ${formatFlagsFooter(globalOptionsSchema)}, or set ${outputFormatEnvNames(cliName).join(" / ")} (human | json | jsonl). A flag beats the environment.`,
+        ].join("\n"),
     },
   );
 
