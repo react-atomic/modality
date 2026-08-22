@@ -65,15 +65,26 @@ const alpha = {
   execute: async () => ({ success: true }),
 } as unknown as CLICommand;
 
-const makeRunner = () =>
+/**
+ * A methods directory that exists on disk. The command refuses to run against a
+ * missing one (Counter's CLI would `process.exit(1)` there), so the mocked
+ * tests — which never read the directory, only the mocked Counter — need a real
+ * path. Its contents are irrelevant.
+ */
+const METHODS_DIR = import.meta.dir;
+
+/** A path that is guaranteed absent, for the directory-missing behavior. */
+const MISSING_DIR = "/repo/methods";
+
+const makeRunner = (methodsDir = METHODS_DIR) =>
   createCliRunner({
     cliName: "demo",
     tagline: "Demo CLI",
     registry: createCommandRegistry([alpha]),
-    methodsDir: "/repo/methods",
+    methodsDir,
   });
 
-const cmd = createSkillCommand({ cliName: "demo", methodsDir: "/repo/methods" });
+const cmd = createSkillCommand({ cliName: "demo", methodsDir: METHODS_DIR });
 
 /** Swap console.log/error for capture buffers; returns them plus a restore fn. */
 function captureConsole() {
@@ -102,14 +113,21 @@ afterEach(() => {
   process.exitCode = realExitCode ?? 0;
 });
 
-// These two behaviors depend on the optional package being genuinely absent,
-// so they run with NO mock registered — they must stay ahead of the mocked
-// describes below (the module's state after `bunMockModule` resets is `{}`).
+// The optional package is installed in this repo, so its absence cannot be
+// produced by leaving it unmocked — `bunMockModule`'s factory is eager content
+// and Bun has no un-mock API. The command takes an `importCounter` seam for
+// exactly this: a rejecting importer is the genuine missing-package path.
 describe("skill command without @modality-counter/core", () => {
+  const missingCmd = createSkillCommand({
+    cliName: "demo",
+    methodsDir: METHODS_DIR,
+    importCounter: () => Promise.reject(new Error("Cannot find package")),
+  });
+
   test("reports the missing optional package instead of throwing", async () => {
     const cap = captureConsole();
     try {
-      await (cmd.execute as (args: string[]) => Promise<void>)(["some-method"]);
+      await (missingCmd.execute as (args: string[]) => Promise<void>)(["some-method"]);
     } finally {
       cap.restore();
     }
@@ -121,14 +139,16 @@ describe("skill command without @modality-counter/core", () => {
     const cap = captureConsole();
     let code: number;
     try {
-      // Reaching the command means reaching the optional-package check — proof
+      // Reaching the command means reaching its own methodsDir check — proof
       // the runner handed the args over instead of printing its own help.
-      code = await makeRunner().run(["skill", "a-method", "--help"]);
+      // (The runner builds its skill command itself, so it uses the real
+      // importer; `/repo/methods` does not exist, which is what it reports.)
+      code = await makeRunner(MISSING_DIR).run(["skill", "a-method", "--help"]);
     } finally {
       cap.restore();
     }
     expect(code).toBe(1);
-    expect(cap.errs.join("\n")).toContain("@modality-counter/core");
+    expect(cap.errs.join("\n")).toContain("methods directory not found");
   });
 });
 

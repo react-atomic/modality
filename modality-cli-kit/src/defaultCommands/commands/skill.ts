@@ -35,6 +35,8 @@
  * A CLI that never sets `methodsDir` never registers this command and never
  * loads Counter — so the kit stays installable without it.
  */
+import { existsSync } from "node:fs";
+
 import { bold, dim, example, header } from "../../help/colors";
 import type { CLICommand } from "../../help/types";
 import { markRawArgv } from "../internal";
@@ -44,6 +46,13 @@ import {
   type MethodParameters,
 } from "../lib/methodParams";
 
+/**
+ * How the command loads the optional `@modality-counter/core` package.
+ * A rejecting importer is the only way to exercise the missing-package path
+ * once the package is installed — Bun offers no un-mock for a module.
+ */
+export type CounterImporter = () => Promise<typeof import("@modality-counter/core")>;
+
 /** Options for {@link createSkillCommand}. */
 export interface SkillCommandOptions {
   /** Command name in help and dispatch (default: `"skill"`). */
@@ -52,6 +61,8 @@ export interface SkillCommandOptions {
   cliName?: string;
   /** Absolute path to the CLI's Counter `methods/` directory. */
   methodsDir: string;
+  /** Loader for the optional package (default: a dynamic `import()` of it). */
+  importCounter?: CounterImporter;
 }
 
 /** The kit's own palette, handed to Counter so its help matches the CLI's. */
@@ -92,7 +103,12 @@ function asFlag(key: string): string {
  * optional package, and the fix should be obvious from the message.
  */
 export function createSkillCommand(options: SkillCommandOptions): CLICommand {
-  const { name = "skill", cliName = "<cli>", methodsDir } = options;
+  const {
+    name = "skill",
+    cliName = "<cli>",
+    methodsDir,
+    importCounter = () => import("@modality-counter/core"),
+  } = options;
 
   /**
    * Validate the supplied params against the named method's declaration.
@@ -177,12 +193,21 @@ export function createSkillCommand(options: SkillCommandOptions): CLICommand {
     async execute(args: string[]): Promise<void> {
       let counter: typeof import("@modality-counter/core");
       try {
-        counter = await import("@modality-counter/core");
+        counter = await importCounter();
       } catch {
         process.exitCode = 1;
         console.error(
           `${name} needs the optional "@modality-counter/core" package. Install it to enable this command.`,
         );
+        return;
+      }
+
+      // Counter's own CLI calls `process.exit(1)` on a missing methods
+      // directory — fatal to any host that embeds it, and to a test run. Report
+      // it here instead, before handing control over.
+      if (!existsSync(methodsDir)) {
+        process.exitCode = 1;
+        console.error(`${cliName} ${name}: methods directory not found: ${methodsDir}`);
         return;
       }
 
