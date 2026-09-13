@@ -18,6 +18,7 @@ const DEFAULT_GLOBAL_OPTIONS = {
   json: z.boolean().optional().describe("output JSON (CLIResult envelope, pretty)"),
   human: z.boolean().optional().describe("render human output instead of JSON"),
   "no-cache": z.boolean().optional().describe("bypass caches; force a live fetch"),
+  trace: z.boolean().optional().describe("print the runner's dispatch path to stderr"),
 } satisfies Record<string, z.ZodTypeAny>;
 
 /** Name of a global option the runner supplies by default. */

@@ -28,6 +28,7 @@
  */
 import type { AITool } from "modality-mcp-kit";
 import type { z } from "zod";
+import { createTracer, type Tracer } from "./trace";
 import { buildCliFromTools } from "./help/cli-builder";
 import type { CLICommand, KeyOverride } from "./help/types";
 import { validateCLICommandArgs } from "./help/zod-cli";
@@ -383,6 +384,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     rest: string[],
     resolvedName: string,
     renderResult: (result: unknown) => void,
+    trace: Tracer,
   ): Promise<number> {
     const first = rest[0];
     const commandOwnsFlags = first !== undefined && !first.startsWith("-");
@@ -402,16 +404,24 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // validation nor arrive at Counter as a method parameter. The command's
     // own flags and `--help` are left untouched.
     const commandArgs = rest.filter((token) => !globalFlagTokens.includes(token));
+    trace.step("forwarded args", commandArgs);
     const result = await (command.execute as (args: string[]) => Promise<unknown>)(commandArgs);
     renderResult(result);
     return Number(process.exitCode);
   }
 
-  async function run(rawArgv: string[] = process.argv.slice(2)): Promise<number> {
+  /**
+   * The argv → resolve → validate → dispatch path. Wrapped by {@link run},
+   * which owns what happens when this throws.
+   */
+  async function dispatch(rawArgv: string[], trace: Tracer): Promise<number> {
+    trace.step("argv", rawArgv);
+
     const envFormat = resolveOutputFormatFromEnv(cliName, process.env, (message) =>
       console.error(message),
     );
     const argv = applyEnvFormat(rawArgv, envFormat, globalFlags);
+    if (envFormat !== undefined) trace.step("env output format", envFormat);
 
     // An explicit flag always beats the environment, which beats the default.
     // Read it off `rawArgv` so an injected flag can't masquerade as explicit.
@@ -431,10 +441,13 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     const envApplies = envFormat === "human" || (envFormat !== undefined && globalFlags.has(FORMAT_FLAG[envFormat]));
     const format = hasExplicitFormat ? detectFormat(flags) : (envApplies ? envFormat ?? "human" : "human");
 
+    trace.step("output format", format);
+
     const renderResult = (result: unknown) => renderCliResult(result, format);
     const [name, ...rest] = argv;
 
     if (!name) {
+      trace.step("no command", onEmpty ? "onEmpty" : aiTool ? "aiTool.execute({})" : "global help");
       if (onEmpty) return onEmpty();
       // With an aiTool but no explicit onEmpty, defer the empty invocation to
       // the tool (its no-command path is a no-op) instead of printing help.
@@ -447,10 +460,12 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       return 1;
     }
     if (name === "--help" || name === "-h") {
+      trace.step("dispatch", "global help");
       console.log(cli.getHelp());
       return 0;
     }
     if (name === "--version" || name === "-v") {
+      trace.step("dispatch", "version");
       // The consuming package owns its version, so it comes in through options;
       // say so plainly when it was not supplied rather than inventing one.
       console.log(version ? `${cliName} v${version}` : `${cliName} (version not configured)`);
@@ -461,6 +476,14 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // a prefix shared by several commands comes back as ambiguous.
     const resolution = registry.resolve(name, { prefix: true });
     if (!resolution.found) {
+      // The module doc's first motivating case is "the wrong command resolved" —
+      // so a failed resolution has to say so, not fall silent before the error.
+      trace.step(
+        "resolution failed",
+        resolution.reason === "ambiguous"
+          ? `${name} is ambiguous: ${resolution.candidates.join(", ")}`
+          : `${name} is unknown`,
+      );
       if (resolution.reason === "ambiguous") {
         const quoted = resolution.candidates.map((c) => `"${c}"`).join(", ");
         console.error(`Ambiguous command: "${name}" — matches ${quoted}\n`);
@@ -473,15 +496,18 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // Use the resolved name so help, validation, and dispatch all agree
     // even when the user typed a prefix or alias.
     const { command, name: resolvedName } = resolution;
+    trace.step("resolved command", resolvedName === name ? name : `${name} -> ${resolvedName}`);
 
     // A raw-argv command owns its argv, so hand it the tokens the user actually
     // typed — `rawArgv`, not `argv`, since an env-injected `--json` would
     // otherwise arrive as one of its arguments.
     if (takesRawArgv(command)) {
-      return runRawArgs(command, rawArgv.slice(1), resolvedName, renderResult);
+      trace.step("dispatch", "raw argv (kit default command)");
+      return runRawArgs(command, rawArgv.slice(1), resolvedName, renderResult, trace);
     }
 
     if (rest.includes("--help") || rest.includes("-h")) {
+      trace.step("dispatch", `help for ${resolvedName}`);
       console.log(cli.getHelp(resolvedName));
       return 0;
     }
@@ -490,6 +516,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // as warnings — never throws — so a non-empty list means rejection.
     const { data, warnings } = validateCLICommandArgs(command, rest, globalFlagTokens);
     if (warnings.length > 0) {
+      trace.step("validation rejected", warnings);
       for (const warning of warnings) console.error(warning);
       console.log(`\n${cli.getHelp(resolvedName)}`);
       return 1;
@@ -499,6 +526,7 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     // schema type which we cannot know statically.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const args = data as any;
+    trace.step("validated args", args);
     // When an aiTool (counter script) is supplied, route through it so CLI
     // dispatch matches the MCP tool exactly; otherwise call the command direct.
     // `command` goes last so the resolved name always wins over any same-named
@@ -506,8 +534,10 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
     //
     // Default commands always dispatch directly: the runner added them, so the
     // consuming package's aiTool has no case for them and would reject the call.
+    const viaAiTool = Boolean(aiTool) && !defaultNames.has(resolvedName);
+    trace.step("dispatch", viaAiTool ? "aiTool.execute" : "command.execute");
     const result =
-      aiTool && !defaultNames.has(resolvedName)
+      viaAiTool && aiTool
         ? await aiTool.execute({ ...args, command: resolvedName })
         : await command.execute(args);
     renderResult(result);
@@ -515,6 +545,48 @@ export function createCliRunner(options: CliRunnerOptions): CliRunner {
       ? (result as { success: boolean }).success !== false
       : true;
     return succeeded ? 0 : 1;
+  }
+
+  /**
+   * Run one invocation, turning a thrown error into the message a CLI user
+   * should see.
+   *
+   * A command that rejects its input — "No input for 'balance'. Pass --file
+   * …" — is reporting a *usage* problem, and the only useful part of it is the
+   * sentence. Letting it escape the runner makes the runtime print the
+   * message buried in a stack trace: source excerpt, a caret, six `at` frames
+   * through the kit's own `dist/index.js`, and a Bun version banner. All of it
+   * is noise about the kit's internals, and none of it helps someone who just
+   * forgot a flag.
+   *
+   * So the message goes to stderr on its own, and the stack is kept for
+   * `--trace`, where an unexpected error is exactly what you turned tracing on
+   * to see. Exit code 1, the same as a validation rejection — from the
+   * caller's side a refused run is a refused run.
+   */
+  async function run(rawArgv: string[] = process.argv.slice(2)): Promise<number> {
+    // Built from the raw tokens, before anything is resolved or injected — the
+    // tracer has to be live for the first step it reports, and for the catch
+    // below. Only pre-terminator tokens count, so a positional `--trace` after
+    // `--` is an argument, not a request to trace. A CLI that dropped `trace`
+    // via `withoutDefaultGlobalOption` has no such flag, so the token is not
+    // the runner's to act on — the same rule the other global flags follow.
+    const trace = createTracer(
+      globalFlags.has("trace") && flagTokens(rawArgv).includes("--trace"),
+      cliName,
+    );
+
+    try {
+      return await dispatch(rawArgv, trace);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      // The stack is the answer to "why did it throw *there*", which is a
+      // question only someone already tracing is asking.
+      if (trace.enabled && error instanceof Error && error.stack) {
+        trace.step("stack", `\n${error.stack}`);
+      }
+      return 1;
+    }
   }
 
   return { run, getHelp: cli.getHelp };

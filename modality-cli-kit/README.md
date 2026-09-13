@@ -191,9 +191,28 @@ Handlers commonly read their own `--json` flag to decide what to print. If the e
 
 Consequences worth knowing:
 
-- A flag is injected only when the CLI keeps it globally — `json`, `human`, and `no-cache` are on by default; drop one with `withoutDefaultGlobalOption`. A non-default flag (e.g. `jsonl`) must be declared in `globalOptionsSchema`, or per-command validation would reject the flag the runner just added.
+- A flag is injected only when the CLI keeps it globally — `json`, `human`, `no-cache`, and `trace` are on by default; drop one with `withoutDefaultGlobalOption`. A non-default flag (e.g. `jsonl`) must be declared in `globalOptionsSchema`, or per-command validation would reject the flag the runner just added.
 - `human` injects `--human` by default (it is a default global option), so handlers that read `--human` get it from `OUTPUT=human` too. Only a CLI that drops `human` via `withoutDefaultGlobalOption` keeps `--human` as a per-command flag the environment never supplies.
 - Commands your package dispatches before delegating to the runner (raw-passthrough argv) never see the injection.
+
+## Tracing Dispatch with `--trace`
+
+A CLI that misbehaves usually misbehaves *before* the handler runs: the wrong command resolved, an env var injected a format flag, an arg coerced to something unexpected. `--trace` turns that path into output.
+
+```bash
+use-stock pric --trace
+[trace] use-stock: argv ["pric","--trace"]
+[trace] use-stock: output format human
+[trace] use-stock: resolved command pric -> price
+[trace] use-stock: validated args {"trace":true}
+[trace] use-stock: dispatch command.execute
+```
+
+- **Silence is the contract.** Without the flag the tracer is inert — no strings built, not one byte written.
+- **Lines go to stderr, never stdout.** stdout is the data channel, so `cli cmd --json --trace | jq` stays valid and the trace still reaches the terminal.
+- **It traces failures too** — an ambiguous or unknown command, a validation rejection, and the stack of an unexpected throw (which is otherwise suppressed in favor of just the message).
+- **Secret-looking keys are redacted.** Values under keys matching `token`, `key`, `secret`, `password`, `auth`, or `credential` render as `***`, since trace output lands in CI logs and bug reports.
+- It is a default global option, so drop it with `withoutDefaultGlobalOption: ["trace"]` like any other.
 
 ## Default Commands (`src/defaultCommands/`)
 

@@ -8,7 +8,7 @@ describe("resolveGlobalOptions", () => {
       z.object({ verbose: z.boolean().optional() }),
       undefined,
     );
-    expect(Object.keys(schema.shape)).toEqual(["json", "human", "no-cache", "verbose"]);
+    expect(Object.keys(schema.shape)).toEqual(["json", "human", "no-cache", "trace", "verbose"]);
   });
 
   test("a supplied key of the same name replaces the default", () => {
@@ -34,6 +34,6 @@ describe("resolveGlobalOptions", () => {
 
   test("disabled=[name] drops just that default", () => {
     const schema = resolveGlobalOptions(undefined, ["human"]);
-    expect(Object.keys(schema.shape)).toEqual(["json", "no-cache"]);
+    expect(Object.keys(schema.shape)).toEqual(["json", "no-cache", "trace"]);
   });
 });
