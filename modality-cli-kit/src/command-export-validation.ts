@@ -8,8 +8,9 @@
  * dispatcher; genuinely reusable code belongs in a shared library instead.
  */
 import { describe, test, expect } from "bun:test";
-import { existsSync, readdirSync, type Dirent } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, isAbsolute } from "node:path";
+import { isCommandFile } from "./command-file";
 
 export interface CommandExportValidationOptions {
   /**
@@ -19,21 +20,6 @@ export interface CommandExportValidationOptions {
    * `directionCommand` — `directionHandler` would fail this check.
    */
   exportSuffix?: string;
-}
-
-/**
- * Predicate that decides whether a directory entry is a command file eligible
- * for validation. Excludes non-files, non-TS extensions, declaration files
- * (.d.ts), and test files (.test.ts, .spec.ts).
- */
-export function isCommandFile(entry: Dirent): boolean {
-  return (
-    entry.isFile() &&
-    entry.name.endsWith(".ts") &&
-    !entry.name.endsWith(".d.ts") &&
-    !entry.name.endsWith(".test.ts") &&
-    !entry.name.endsWith(".spec.ts")
-  );
 }
 
 /**

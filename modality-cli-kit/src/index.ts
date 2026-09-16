@@ -4,7 +4,9 @@
 export * from "./help";
 
 // Reusable test suite: enforce the one-export-per-command-module rule.
-export { setupCommandExportValidation, isCommandFile } from "./command-export-validation";
+export { setupCommandExportValidation } from "./command-export-validation";
+// Command-file predicate shared by the scanner and the export validator.
+export { isCommandFile } from "./command-file";
 export type { CommandExportValidationOptions } from "./command-export-validation";
 
 // ── Command Registry & Runner ────────────────────────────────────────────────
@@ -12,6 +14,10 @@ export type { CommandExportValidationOptions } from "./command-export-validation
 // supplies its commands and a little config.
 export { createCommandRegistry } from "./registry";
 export type { CommandRegistry, CommandResolution } from "./registry";
+// Directory-scanned registry: the commands folder replaces a hand-written index
+// module, so adding or removing a command is adding or removing a file.
+export { createCommandRegistryFromDir, loadCommandsFromDir, resolveCommandsDir } from "./commandsDir";
+export type { LoadCommandsOptions, ResolveCommandsDirOptions } from "./commandsDir";
 export { createCliRunner } from "./createCliRunner";
 export type { CliRunner, CliRunnerOptions } from "./createCliRunner";
 // Exported so a CLI that renders help itself (e.g. an MCP-tool help path) can

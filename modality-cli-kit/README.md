@@ -214,6 +214,62 @@ use-stock pric --trace
 - **Secret-looking keys are redacted.** Values under keys matching `token`, `key`, `secret`, `password`, `auth`, or `credential` render as `***`, since trace output lands in CI logs and bug reports.
 - It is a default global option, so drop it with `withoutDefaultGlobalOption: ["trace"]` like any other.
 
+## Command Registry
+
+`createCommandRegistry` resolves command names, aliases, and unique prefixes, then dispatches to each command's own `execute`.
+
+### Scan a directory (`createCommandRegistryFromDir`)
+
+The commands folder *is* the index — there is no module listing imports:
+
+```ts
+import { createCommandRegistryFromDir, resolveCommandsDir } from "modality-cli-kit";
+
+export const registry = await createCommandRegistryFromDir(
+  resolveCommandsDir({ from: import.meta.url }),
+);
+```
+
+Every file in `commandsDir` that exports a `*Command` is registered. Adding a command is dropping in a file; removing one is deleting that file. Nothing else is edited, so no central list can be left pointing at a command that no longer exists.
+
+The scan accepts a `file:` URL or an absolute path, loads both `.ts` and `.js` (the same directory is source in development and build output in `dist`), and ignores `.d.ts`, `.test.*`, and `.spec.*`. A file that exports no command — or that throws while importing — is reported on stderr and skipped, so one broken module cannot take `--help` and every working command down with it. `setupCommandExportValidation` is the strict counterpart: it fails the build on exactly those files, which is where strictness is free.
+
+Use `loadCommandsFromDir` when you want the array rather than a registry, and `exportSuffix` when your commands export something other than `*Command`.
+
+> **Bundled CLIs must emit the command files.** A bundler only emits modules something imports, and scanning imports nothing statically — so name the directory as an entrypoint glob (`bun build ./src/cli.ts ./src/scripts/commands/*.ts …`), or the scan finds an empty directory at runtime.
+>
+> For the same reason, resolve the directory from the **package root**, not from `import.meta.url`: the module that calls the scan is inlined into whichever chunk the bundler chooses, so `import.meta.url` reports that chunk's location rather than the source file's.
+
+### Manual index
+
+Pass commands explicitly when you want the list under version control:
+
+```ts
+export const registry = createCommandRegistry([fooCommand, barCommand]);
+```
+
+### Aliases
+
+A command declares its own:
+
+```ts
+export const barCommand: CLICommand = {
+  name: "bar",
+  aliases: ["b", "baz"],
+  …
+};
+```
+
+Declaring them on the command is what makes a scanned registry self-maintaining — the file is the command's only declaration, so deleting it removes its aliases too.
+
+The optional second argument to either constructor overrides that per command:
+
+```ts
+createCommandRegistry(commands, { bar: ["b"] });  // `bar`'s own aliases are ignored
+```
+
+A command the map does not name keeps its own list, and an empty array (`{ bar: [] }`) deliberately removes a command's aliases.
+
 ## Default Commands (`src/defaultCommands/`)
 
 Commands `createCliRunner` registers on your CLI's behalf. You declare nothing — they show up in `--help` and dispatch like any other command.

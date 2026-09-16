@@ -64,6 +64,57 @@ describe("createCommandRegistry", () => {
     expect(createCommandRegistry([makeCmd("a")], aliases).aliases).toBe(aliases);
   });
 
+  // ── aliases declared on the command object ──────────────────────────────
+
+  const withAliases = (name: string, aliases: string[]): CLICommand =>
+    ({ ...makeCmd(name), aliases }) as CLICommand;
+
+  test("a command's own aliases resolve when no map is supplied", () => {
+    const foo = withAliases("foo", ["f", "fo"]);
+    const registry = createCommandRegistry([foo]);
+    expect(registry.get("f")!.name).toBe("foo");
+    expect(registry.get("fo")!.name).toBe("foo");
+    expect(registry.aliases.foo).toEqual(["f", "fo"]);
+  });
+
+  test("the supplied map overrides a command's own aliases", () => {
+    const foo = withAliases("foo", ["f"]);
+    const registry = createCommandRegistry([foo], { foo: ["eff"] });
+    expect(registry.get("eff")!.name).toBe("foo");
+    expect(registry.get("f")).toBeUndefined();
+    expect(registry.aliases.foo).toEqual(["eff"]);
+  });
+
+  test("an empty map entry deliberately removes a command's own aliases", () => {
+    const registry = createCommandRegistry([withAliases("foo", ["f"])], { foo: [] });
+    expect(registry.get("f")).toBeUndefined();
+    expect(registry.aliases.foo).toEqual([]);
+  });
+
+  test("mapped and self-declared aliases coexist across commands", () => {
+    const registry = createCommandRegistry(
+      [withAliases("foo", ["f"]), withAliases("bar", ["b"])],
+      { foo: ["eff"] },
+    );
+    expect(registry.get("eff")!.name).toBe("foo");
+    expect(registry.get("b")!.name).toBe("bar");
+  });
+
+  test("the supplied map is left untouched when commands contribute aliases", () => {
+    const supplied = { foo: ["eff"] };
+    const registry = createCommandRegistry(
+      [withAliases("foo", ["f"]), withAliases("bar", ["b"])],
+      supplied,
+    );
+    expect(supplied).toEqual({ foo: ["eff"] });
+    expect(registry.aliases.bar).toEqual(["b"]);
+  });
+
+  test("a command with an empty aliases array contributes nothing", () => {
+    const registry = createCommandRegistry([withAliases("foo", [])]);
+    expect(registry.aliases).toEqual({});
+  });
+
   test("execute() resolves and runs the command, forwarding args", async () => {
     const echo = makeCmd("echo", "echo");
     const registry = createCommandRegistry([echo]);

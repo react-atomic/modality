@@ -2,9 +2,14 @@
  * Command registry — the single place a CLI wires its commands and aliases.
  *
  * Each command is a self-contained `CLICommand`; the registry resolves names
- * and aliases to the right command and dispatches to its `execute`. Command
- * modules never declare their own aliases — the alias map here is the one
- * source of truth.
+ * and aliases to the right command and dispatches to its `execute`.
+ *
+ * A command's aliases may come from either side. The alias map passed here is
+ * authoritative for every command it names; a command not named there
+ * contributes its own `aliases` field instead. Declaring them on the command is
+ * what lets `createCommandRegistryFromDir` work from a directory alone — the
+ * file is the command's only declaration, so deleting it removes its aliases
+ * too and no central map can be left pointing at a command that is gone.
  *
  * ## Quick start
  *
@@ -38,7 +43,10 @@ export type CommandResolution =
 export interface CommandRegistry {
   /** All registered commands, in declaration order. */
   all: CLICommand[];
-  /** Alias → canonical-command-name map (as supplied). */
+  /**
+   * `commandName → [alias, ...]` — the supplied map, plus the `aliases` of any
+   * command the map did not name.
+   */
   aliases: Record<string, string[]>;
   /** Resolve a command by its name or any alias. */
   get(name: string): CLICommand | undefined;
@@ -56,8 +64,8 @@ export interface CommandRegistry {
  * Build a {@link CommandRegistry} from a list of commands and an alias map.
  *
  * @param commands  One `CLICommand` per capability.
- * @param aliases   `commandName → [alias, ...]`. Aliases live only here, never
- *                  on the command objects themselves.
+ * @param aliases   `commandName → [alias, ...]`. Overrides the `aliases` field
+ *                  of any command it names; commands it omits keep their own.
  */
 export function createCommandRegistry(
   commands: CLICommand[],
@@ -82,18 +90,33 @@ export function createCommandRegistry(
       return { ...cmd, summary, description };
     });
 
+  // A command may carry its own `aliases`, which is what a directory-scanned
+  // registry relies on: the file is the only place the command is declared, so
+  // deleting it takes its aliases with it and nothing central can go stale. The
+  // explicit map still wins for any command it names, so a caller that
+  // centralizes aliases keeps the behavior it had.
+  // The supplied map is returned as-is when no command contributes anything,
+  // so a caller that passed one keeps the object it handed over.
+  const harvested = registered.filter(
+    (cmd) => aliases[cmd.name] === undefined && cmd.aliases?.length,
+  );
+  const resolvedAliases: Record<string, string[]> = harvested.length ? { ...aliases } : aliases;
+  // Copy, so the registry's map never aliases (and cannot mutate) the array
+  // owned by the command object.
+  for (const cmd of harvested) resolvedAliases[cmd.name] = [...cmd.aliases!];
+
   const map = new Map<string, CLICommand>();
   for (const cmd of registered) {
     if (map.has(cmd.name)) {
       console.error(`[registry] Warning: duplicate command name "${cmd.name}" — last registration wins`);
     }
     map.set(cmd.name, cmd);
-    for (const alias of aliases[cmd.name] ?? []) map.set(alias, cmd);
+    for (const alias of resolvedAliases[cmd.name] ?? []) map.set(alias, cmd);
   }
 
   return {
     all: registered,
-    aliases,
+    aliases: resolvedAliases,
     get: (name: string) => map.get(name),
     resolve(input: string, options?: { prefix?: boolean }): CommandResolution {
       // An exact name or alias always wins, even when it is also a prefix of

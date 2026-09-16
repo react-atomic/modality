@@ -1,9 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { type Dirent } from "node:fs";
-import {
-  setupCommandExportValidation,
-  isCommandFile,
-} from "../command-export-validation";
+import { setupCommandExportValidation } from "../command-export-validation";
+import { isCommandFile } from "../command-file";
 
 // Self-test against the fixtures: foo.ts and index.ts pass the one-export rule;
 // .d.ts, .test.ts, and .spec.ts files are excluded from validation.
@@ -32,7 +30,19 @@ describe("isCommandFile", () => {
     expect(isCommandFile(dirent("foo.spec.ts"))).toBe(false);
   });
 
-  test("excludes non-.ts files", () => {
+  test("includes built .js command files", () => {
+    expect(isCommandFile(dirent("foo.js"))).toBe(true);
+  });
+
+  test("excludes .test.js test files", () => {
+    expect(isCommandFile(dirent("foo.test.js"))).toBe(false);
+  });
+
+  test("excludes .spec.js spec files", () => {
+    expect(isCommandFile(dirent("foo.spec.js"))).toBe(false);
+  });
+
+  test("excludes files with unrelated extensions", () => {
     expect(isCommandFile(dirent("readme.md"))).toBe(false);
   });
 
